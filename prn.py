@@ -93,14 +93,22 @@ def generate(sv):
     return [-1 if x == 0 else 1 for x in ca]
 
 
-def sample(sv, sample_rate, length):
+def sample(sv, sample_rate, length, offset_phase = 0, offset_samples = 0):
     """Discrete sample a PRN for a satellite"""
 
     chiping_rate = 1.023e6  # From GPS Spec
-    prn = generate(sv)
+    prn = np.array(generate(sv))
     samples = np.zeros(length, dtype=np.complex64)
-    for i in range(length):
-        t = i / float(sample_rate)
-        p = prn[int(round(t * chiping_rate)) % 1023]
-        samples[i] = p + 0j
-    return np.array(samples)
+
+    t = (np.arange(length) + offset_samples) / float(sample_rate)
+    i = (np.round(t * chiping_rate) + offset_phase) % 1023
+    i = i.astype(int)
+    p = prn[i]
+
+    samples = p + 0j
+
+    # for i in range(length):
+        # t = (i + offset_samples) / float(sample_rate)
+        # p = prn[int(round(t * chiping_rate) + offset_phase) % 1023]
+        # samples[i] = p + 0j
+    return samples.astype(np.complex64)
