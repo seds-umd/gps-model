@@ -11,7 +11,7 @@ def generate_gps(
     doppler2: float = 0,
     code_phase: int = 0,
     signal_power: float = None,
-):
+) -> np.ndarray:
     """Generate a modulated baseband GPS signal. Only includes L1 C/A, not P(Y). Navigation data is just random bits.
 
     Args:
