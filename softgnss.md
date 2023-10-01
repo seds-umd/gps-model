@@ -40,6 +40,18 @@ Files that are important are bolded and elaborated on later.
 
 ## Acquisition
 
+`acquisition.m`
+
+### Coarse Acquisition
+
+### Fine Acquisition
+
+* Generate 10ms of C/A code sequences for the given PRN
+* Mix code with 10ms of samples to remove it and get raw carrier
+* Set fftNumPts to 8x the next power of 2 of the carrier
+* Calculate FFT of raw carrier using N=fftNumPts (padded with zeros to meet length) and find magnitude
+* Take max value as frequency
+
 ## Tracking
 
 `tracking.m` and `trackingv.m` are similar, but `trackingv` includes a Kalman filter. We will only focus on `tracking` for now.
