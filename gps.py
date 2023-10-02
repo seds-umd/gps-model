@@ -188,6 +188,7 @@ def tracking(x: np.array, f_s: float, sv: int, freq_est: float, code_est: int, d
         res_code_freq = []
         res_code_err = []
         res_code_phase = []
+        res_code_pos = []
 
     for _ in range(ms_count):
         code_phase_step = code_freq / f_s
@@ -243,10 +244,11 @@ def tracking(x: np.array, f_s: float, sv: int, freq_est: float, code_est: int, d
             res_code_freq.append(code_freq)
             res_code_err.append(code_err)
             res_code_phase.append(code_phase)
+            res_code_pos.append(sample_position)
 
     res_samples = np.array(res_samples, dtype=np.complex64)
 
     if debug_results:
-        return res_samples, res_carr_freq, res_carr_err, res_code_freq, res_code_err, res_code_phase
+        return res_samples, res_carr_freq, res_carr_err, res_code_freq, res_code_err, res_code_phase, res_code_pos
     else:
         return res_samples
