@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from typing import Union, List
 
-import prn
+from . import prn
 
 class PLL:
     def __init__(self, bw: float, zeta: float, gain: float, ts: float):
