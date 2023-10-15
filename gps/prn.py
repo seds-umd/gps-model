@@ -100,15 +100,11 @@ def sample(sv, sample_rate, length, offset_phase = 0, offset_samples = 0):
     prn = np.array(generate(sv))
     samples = np.zeros(length, dtype=np.complex64)
 
-    t = (np.arange(length) + offset_samples) / float(sample_rate)
-    i = (np.floor(t * chiping_rate + 0.5) + offset_phase) % 1023
+    t = (np.arange(length) + offset_samples)
+    i = (np.floor(t * (chiping_rate / sample_rate) + 0.5) + offset_phase) % 1023
     i = i.astype(int)
     p = prn[i]
 
     samples = p + 0j
 
-    # for i in range(length):
-        # t = (i + offset_samples) / float(sample_rate)
-        # p = prn[int(round(t * chiping_rate) + offset_phase) % 1023]
-        # samples[i] = p + 0j
     return samples.astype(np.complex64)
