@@ -101,7 +101,7 @@ def sample(sv, sample_rate, length, offset_phase = 0, offset_samples = 0):
     samples = np.zeros(length, dtype=np.complex64)
 
     t = (np.arange(length) + offset_samples) / float(sample_rate)
-    i = (np.round(t * chiping_rate) + offset_phase) % 1023
+    i = (np.floor(t * chiping_rate + 0.5) + offset_phase) % 1023
     i = i.astype(int)
     p = prn[i]
 
