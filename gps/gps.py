@@ -113,7 +113,7 @@ def acquisition(
 
         # If SNR is high enough, it's probably a satellite
         if snr > threshold:
-            results.append([sv_idx, shift_freq[shift], phase])
+            results.append([sv_idx, shift_freq[shift], phase, snr])
 
             if verbose:
                 print(
