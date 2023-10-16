@@ -4,5 +4,5 @@ setup(
     name="gps-model",
     version='0.1',
     packages=["gps"],
-    package_data={"": ["*.so*"]}
+    package_data={"": ["cmodel/libgmp.so.11", "cmodel/libIp_xfft_v9_1_bitacc_cmodel.so"]}
 )
