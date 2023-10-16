@@ -1,8 +1,10 @@
 import ctypes
 import numpy as np
+from pathlib import Path
 
-_gmp = ctypes.CDLL("gps/cmodel/libgmp.so.11")
-_fft_cmodel = ctypes.CDLL("gps/cmodel/libIp_xfft_v9_1_bitacc_cmodel.so")
+_lib_path = Path(__file__).parent
+_gmp = ctypes.CDLL(_lib_path / "cmodel/libgmp.so.11")
+_fft_cmodel = ctypes.CDLL(_lib_path / "cmodel/libIp_xfft_v9_1_bitacc_cmodel.so")
 
 class FftGenerics(ctypes.Structure):
     C_NFFT_MAX: ctypes.c_int
