@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import prn
+
+from . import prn
 
 
 def generate_gps(
@@ -42,7 +43,7 @@ def generate_gps(
 
     # Add doppler offset
     t = np.arange(n) / f_s
-    samples = samples * np.exp(2j * np.pi * (doppler + t*doppler2) * t)
+    samples = samples * np.exp(2j * np.pi * (doppler + t * doppler2) * t)
 
     # Add noise
     if signal_power is not None:
