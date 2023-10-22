@@ -11,6 +11,7 @@ def generate_gps(
     doppler: float = 0,
     doppler2: float = 0,
     code_phase: int = 0,
+    sample_phase: int = 0,
     signal_power: float = None,
 ) -> np.ndarray:
     """Generate a modulated baseband GPS signal. Only includes L1 C/A, not P(Y). Navigation data is just random bits.
@@ -29,7 +30,7 @@ def generate_gps(
     block = int(f_s / 50)
     assert f_s % 50 == 0, "Sample rate must be divisible by 50"
 
-    code = prn.sample(sv, f_s, block, code_phase)
+    code = prn.sample(sv, f_s, block, code_phase, sample_phase)
     num_bits = int(np.ceil(n / block))
     bits = np.random.choice([-1, 1], size=num_bits)
 
