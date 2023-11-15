@@ -103,7 +103,7 @@ class Fft:
         self.generics.C_TWIDDLE_WIDTH = twiddle_width
         self.generics.C_HAS_SCALING = 1
         self.generics.C_HAS_BFP = 1
-        self.generics.C_HAS_ROUNDING = 0
+        self.generics.C_HAS_ROUNDING = 1
 
         self.state = _fft_cmodel.xilinx_ip_xfft_v9_1_create_state(self.generics)
 
