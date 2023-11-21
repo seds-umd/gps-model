@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from typing import Union, List
+from typing import Union, List, Tuple
 
 from . import prn
 
@@ -137,7 +137,7 @@ def fine_acquisition(x: np.ndarray, f_s: float, fft_n: int, dec_factor: int, sv:
         verbose (bool, optional): Print status/debug info. Defaults to False.
     
     Returns:
-        Frequency estimate.
+        Tuple of frequency estimate and SNR.
     """
 
     assert len(x) >= fft_n*dec_factor, "Not enough samples provided"
@@ -154,7 +154,7 @@ def fine_acquisition(x: np.ndarray, f_s: float, fft_n: int, dec_factor: int, sv:
     if verbose:
         print(f"[Acquisition] Fine freq: {freq_est:0.1f} Hz, +-{f_s/(fft_n*dec_factor*2):0.1f} Hz")
 
-    return freq_est
+    return freq_est, X[np.argmax(X)] / np.mean(X)
 
 def tracking(x: np.array, f_s: float, sv: int, freq_est: float, code_est: int, debug_results: bool = False):
     carrier_pll = PLL(6.5, 0.707, 0.25, 1e-3)
