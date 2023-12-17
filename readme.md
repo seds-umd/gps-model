@@ -24,8 +24,8 @@ pip install -r requirements.txt
 
 * 60 seconds
 * 8 bit IQ
-* Ionospheric delay disabled
+* 4.092 Msps
 
 ```bash
-./gps-sdr-sim/gps-sdr-sim -e data/brdc2570.23n -l 38.986008,-76.942566,10.0 -b 8 -d 60 -i -s 2600000 -o data/gpssim.ci16
+./gps-sdr-sim/gps-sdr-sim -e data/brdc2570.23n -l 38.986008,-76.942566,10.0 -b 8 -d 60 -s 4092000 -o data/gpssim.ci16
 ```
