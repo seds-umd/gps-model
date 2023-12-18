@@ -11,7 +11,7 @@ CODES_PER_SUBFRAME = CODES_PER_BIT * BITS_PER_WORD * WORDS_PER_SUBFRAME
 
 
 def gps_parity(word, last):
-    """Calculate parity for GPS frame.
+    """Calculate parity for GPS frames.
 
     Bits must be represented as 1 or -1.
 
@@ -81,24 +81,34 @@ def decode(sbf, word, start, end, twos_comp=False):
     """
 
     if start == end:
-        return int(sbf[word-1][start-1])
+        return int(sbf[word - 1][start - 1])
 
-    data = int(sbf[word-1][start-1:end], 2)
-    data_len = end-start+1
+    data = int(sbf[word - 1][start - 1 : end], 2)
+    data_len = end - start + 1
 
-    if twos_comp and data > 2**(data_len-1):
+    if twos_comp and data > 2 ** (data_len - 1):
         data = data - 2**data_len
 
     return data
 
 
 def arr2bin(arr, t=1):
-    return "".join(['1' if c == t else '0' for c in arr])
+    # Convert array of bits into string of bits for easier decoding
+    return "".join(["1" if c == t else "0" for c in arr])
 
 
 class Subframe:
     @staticmethod
     def decode(words):
+        """Return subframe with decoded data.
+
+        Args:
+            words (list[str]): List of words in frame as string of bits.
+
+        Returns:
+            Subframe: Subframe of correct type based on id
+        """
+
         id = decode(words, 2, 20, 22)
 
         if id == 1:
@@ -108,7 +118,7 @@ class Subframe:
         elif id == 3:
             return Subframe3(words)
         else:
-            return None # TODO: decode other subframe types
+            return None  # TODO: decode other subframe types
 
 
 class Subframe1:
@@ -117,35 +127,36 @@ class Subframe1:
     def __init__(self, sbf):
         self.tow = decode(sbf, 2, 1, 17)
 
-        self.week = decode(sbf, 3, 1, 10) # 20.3.3.3.1.1
-        self.l2_code = decode(sbf, 3, 11, 12) # 20.3.3.3.1.2
-        self.ura = decode(sbf, 3, 13, 16) # 20.3.3.3.1.3
-        self.sv_health = decode(sbf, 3, 16, 16) # 20.3.3.3.1.4
+        self.week = decode(sbf, 3, 1, 10)  # 20.3.3.3.1.1
+        self.l2_code = decode(sbf, 3, 11, 12)  # 20.3.3.3.1.2
+        self.ura = decode(sbf, 3, 13, 16)  # 20.3.3.3.1.3
+        self.sv_health = decode(sbf, 3, 16, 16)  # 20.3.3.3.1.4
 
         # 20.3.3.3.1.5
         self.iodc = decode(sbf, 3, 23, 24) << 8
         self.iodc = self.iodc | decode(sbf, 8, 1, 8)
 
-        self.t_gd = decode(sbf, 7, 17, 24, True) * 2**-31 # 20.3.3.3.1.7
+        self.t_gd = decode(sbf, 7, 17, 24, True) * 2**-31  # 20.3.3.3.1.7
 
         # Clock correction - 20.3.3.3.1.8
         self.t_oc = decode(sbf, 8, 9, 24) * 2**4
         self.a_f2 = decode(sbf, 9, 1, 8, True) * 2**-55
         self.a_f1 = decode(sbf, 9, 9, 24, True) * 2**-43
         self.a_f0 = decode(sbf, 10, 1, 22, True) * 2**-31
-    
+
     def __repr__(self) -> str:
         s = f"Subframe {self.id}, ToW {self.tow}, Week {self.week}, IODC {self.iodc}, "
         s += f"t_oc={self.t_oc}, a_f2={self.a_f2:0.3e}, a_f1={self.a_f1:0.3e}, a_f0={self.a_f0:0.3e}"
 
         return s
 
+
 class Subframe2:
     id = 2
 
     def __init__(self, sbf):
         self.tow = decode(sbf, 2, 1, 17)
-        
+
         self.iode = decode(sbf, 3, 1, 8)
         self.c_rs = decode(sbf, 3, 9, 24, True) * 2**-5
         self.delta_n = decode(sbf, 4, 1, 16, True) * 2**-43
@@ -175,12 +186,13 @@ class Subframe2:
 
         self.fit_interval = decode(sbf, 10, 17, 17)
         self.aodo = decode(sbf, 10, 17, 22)
-    
+
     def __repr__(self) -> str:
         s = f"Subframe {self.id}, ToW {self.tow}, iode={self.iode}, c_rs={self.c_rs:0.1f}, delta_n={self.delta_n:0.3e}, M0={self.m_0:0.3f}, c_uc={self.c_uc:0.3e}, "
         s += f"e={self.e:0.4f}, c_us={self.c_us:0.3e}, sqrtA={self.sqrt_a:0.1f}, t_oe={self.t_oe}"
 
         return s
+
 
 class Subframe3:
     id = 3
@@ -224,13 +236,21 @@ class Subframe3:
 
         return s
 
+
 class FrameDecoder:
+    """This class takes a sample at a time and stores it in a buffer,
+    looking for valid frames as it goes.
+    """
+
     PREAMBLE = np.repeat([1 if c == "1" else -1 for c in "10001011"], CODES_PER_BIT)
 
     def __init__(self):
         self.reset()
 
     def reset(self):
+        """Reset decoder to initial state.
+        """
+
         self.sample_buffer = []
 
         # State
@@ -238,7 +258,17 @@ class FrameDecoder:
         self.checked = 0
         self.idx = 0
 
-    def decode_subframe(self, idx, inverted):
+    def decode_subframe(self, idx: int, inverted: bool) -> Subframe:
+        """Decode samples into subframe and return values.
+
+        Args:
+            idx (int): Index where subframe starts.
+            inverted (bool): If True, bits are inverted
+
+        Returns:
+            Subframe: Subframe object containing decoded values
+        """
+
         sbf = self.sample_buffer[idx : idx + CODES_PER_SUBFRAME]
         sbf = np.array(sbf)
         sbf = sbf.reshape((-1, CODES_PER_BIT))
@@ -255,7 +285,7 @@ class FrameDecoder:
         words = []
 
         for j in range(10):
-            word = sbf[j*30:(j+1)*30]
+            word = sbf[j * 30 : (j + 1) * 30]
 
             valid = gps_parity(word, last_parity)
 
@@ -268,7 +298,16 @@ class FrameDecoder:
 
         return Subframe.decode(words)
 
-    def process(self, sample):
+    def process(self, sample: float) -> Subframe:
+        """Process a single sample. A frame is returned if found within previous samples.
+
+        Args:
+            sample (float): Sample
+
+        Returns:
+            Subframe: Decoded frame. If no frame is decoded, returns None.
+        """
+
         # Digitize samples
         sample = 1 if sample > 0 else -1
 
@@ -276,22 +315,27 @@ class FrameDecoder:
         self.idx += 1
 
         # Exit if there's no enough samples to do anything
-        if len(self.sample_buffer) < 8*20:
-            return
+        if len(self.sample_buffer) < 8 * 20:
+            return None
 
         # Check for preambles
-        corr = np.sum(self.PREAMBLE * self.sample_buffer[-len(self.PREAMBLE):])
+        corr = np.sum(self.PREAMBLE * self.sample_buffer[-len(self.PREAMBLE) :])
         if np.abs(corr) == 160:
             self.preambles.append(self.idx - len(self.PREAMBLE))
 
         # Look through past preambles and process them if an entire subframe is available
-        if len(self.preambles) > 0 and self.preambles[0] < self.idx - CODES_PER_SUBFRAME:
+        if (
+            len(self.preambles) > 0
+            and self.preambles[0] < self.idx - CODES_PER_SUBFRAME
+        ):
             i = self.preambles.pop(0)
 
-            corr = np.sum(self.PREAMBLE * self.sample_buffer[i:i+len(self.PREAMBLE)])
+            corr = np.sum(
+                self.PREAMBLE * self.sample_buffer[i : i + len(self.PREAMBLE)]
+            )
             inverted = int(corr) == -160
 
-            word = self.sample_buffer[i:i + BITS_PER_WORD*CODES_PER_BIT]
+            word = self.sample_buffer[i : i + BITS_PER_WORD * CODES_PER_BIT]
             word = np.array(word)
             if inverted:
                 word = -1 * word
@@ -306,10 +350,15 @@ class FrameDecoder:
             valid = gps_parity(word, [-1, -1])
 
             if valid:
+                # TODO: clean up sample buffer after it's used
                 return self.decode_subframe(i, inverted)
 
 
 class SampleBuffer:
+    """Storage object that allows samples to be added and removed in
+    different amounts.
+    """
+
     def __init__(self) -> None:
         self.buffer = []
         self.count = 0
@@ -405,9 +454,8 @@ class TrackingChannel:
         # Loop variables
         self.carrier_phase = 0
         self.carrier_freq = freq_est
+        self.code_phase = 0
         self.code_freq = CODE_FREQ
-        # self.code_phase = 1023 - code_est * self.code_freq / self.fs
-        self.code_phase = 0  # TODO: start at correct phase
         self.sample_position = int(self.fs / 1e3 - code_est)
 
         self.initialized = True
@@ -549,10 +597,27 @@ class GpsReceiver:
         dll_zeta: float = 0.707,
         dll_gain: float = 1,
     ):
+        """Set PLL and DLL parameters.
+
+        Args:
+            pll_bw (float, optional): PLL bandwidth in Hz. Defaults to 25.
+            pll_zeta (float, optional): PLL damping factor. Defaults to 0.707.
+            pll_gain (float, optional): PLL gain. Defaults to 0.25.
+            dll_bw (float, optional): DLL bandwidth in Hz. Defaults to 1.
+            dll_zeta (float, optional): DLL damping factor. Defaults to 0.707.
+            dll_gain (float, optional): DLL gain. Defaults to 1.
+        """
+
         self.pll_params = (pll_bw, pll_zeta, pll_gain)
         self.dll_params = (dll_bw, dll_zeta, dll_gain)
 
     def process(self, samples: np.ndarray):
+        """Process samples.
+
+        Args:
+            samples (np.ndarray): Samples to be processed. Should be type np.complex64.
+        """
+
         # TODO: run acquisition continuously instead of just at start
 
         if np.sum(self.acquired > 0) == 0:
