@@ -156,7 +156,7 @@ def fine_acquisition(x: np.ndarray, f_s: float, fft_n: int, dec_factor: int, sv:
 
     return freq_est, X[np.argmax(X)] / np.mean(X)
 
-def tracking(x: np.array, f_s: float, sv: int, freq_est: float, code_est: int, debug_results: bool = False):
+def tracking(x: np.ndarray, f_s: float, sv: int, freq_est: float, code_est: int, debug_results: bool = False):
     carrier_pll = PLL(10, 0.707, 0.25, 1e-3)
     code_dll = PLL(1, 0.707, 1, 1e-3)
 
@@ -181,13 +181,13 @@ def tracking(x: np.array, f_s: float, sv: int, freq_est: float, code_est: int, d
     # Outputs
     res_samples = []
 
-    if debug_results:
-        res_carr_freq = []
-        res_carr_err = []
-        res_code_freq = []
-        res_code_err = []
-        res_code_phase = []
-        res_code_pos = []
+    # Debug outputs
+    res_carr_freq = []
+    res_carr_err = []
+    res_code_freq = []
+    res_code_err = []
+    res_code_phase = []
+    res_code_pos = []
 
     for _ in range(ms_count):
         code_phase_step = code_freq / f_s

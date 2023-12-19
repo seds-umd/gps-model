@@ -1,6 +1,7 @@
 import numpy as np
 
-# Stolen from https://github.com/natronics/gps/blob/master/gps/prn.py
+# Taken from https://github.com/natronics/gps/blob/master/gps/prn.py
+# Made a few modifications to work better for this project
 
 SV = {
     1: [2, 6],
