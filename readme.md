@@ -29,3 +29,17 @@ pip install -r requirements.txt
 ```bash
 ./gps-sdr-sim/gps-sdr-sim -e data/brdc2570.23n -l 38.986008,-76.942566,10.0 -b 8 -d 60 -s 4092000 -o data/gpssim.ci16
 ```
+
+## Example
+
+```bash
+python3 main.py data/2/GPS-L1-2022-03-27.sigmf-data --fs 4000000 --width 16
+```
+
+## Profiling
+
+```bash
+pip install snakeviz
+python3 -m cProfile -o main.prof main.py data/2/GPS-L1-2022-03-27.sigmf-data --fs 4000000 --width 16
+snakeviz main.prof
+```

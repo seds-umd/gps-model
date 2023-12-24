@@ -10,13 +10,13 @@ WORDS_PER_SUBFRAME = 10
 CODES_PER_SUBFRAME = CODES_PER_BIT * BITS_PER_WORD * WORDS_PER_SUBFRAME
 
 
-def gps_parity(word, last):
+def gps_parity(word, last) -> int:
     """Calculate parity for GPS frames.
 
     Bits must be represented as 1 or -1.
 
     Args:
-        word : List or array containing 30 bits
+        word: List or array containing 30 bits
         last: List containing [D29*, D30*]
 
     Returns:
@@ -64,7 +64,7 @@ def gps_parity(word, last):
         return 0
 
 
-def decode(sbf, word, start, end, twos_comp=False):
+def decode(sbf, word, start, end, twos_comp=False, flip=False):
     """Helper function to decode data from GPS subframes.
 
     word, start, and end are 1-indexed to match GPS spec.
@@ -72,9 +72,10 @@ def decode(sbf, word, start, end, twos_comp=False):
     Args:
         sbf (list): List containing bits of subframe.
         word (int): Word within subframe.
-        start (int): Starting index in word
-        end (int): Ending index in word
+        start (int): Starting index in word (inclusive)
+        end (int): Ending index in word (inclusive)
         twos_comp (bool, optional): If True, decode using two's complement. Defaults to False.
+        flip (bool, optional): If True, flip endianness. Defaults to False.
 
     Returns:
         int: Decoded value.
@@ -83,7 +84,10 @@ def decode(sbf, word, start, end, twos_comp=False):
     if start == end:
         return int(sbf[word - 1][start - 1])
 
-    data = int(sbf[word - 1][start - 1 : end], 2)
+    if flip:
+        data = int(sbf[word - 1][start - 1 : end][::-1], 2)
+    else:
+        data = int(sbf[word - 1][start - 1 : end], 2)
     data_len = end - start + 1
 
     if twos_comp and data > 2 ** (data_len - 1):
@@ -97,141 +101,155 @@ def arr2bin(arr, t=1):
     return "".join(["1" if c == t else "0" for c in arr])
 
 
+def decode_subframe(words, position, sv):
+    """Return subframe with decoded data.
+
+    Args:
+        words (list[str]): List of words in frame as string of bits.
+        position (int): Sample position of start of frame.
+        sv (int): SV index
+
+    Returns:
+        Subframe: Subframe of correct type based on id
+    """
+
+    id = decode(words, 2, 20, 22)
+
+    frame_classes = {
+        1: Subframe1,
+        2: Subframe2,
+        3: Subframe3
+    }
+
+    try:
+        return frame_classes[id](words, position, sv)
+    except KeyError:
+        # TODO: decode other subframe types
+        return Subframe(words, position, sv)
+
+
 class Subframe:
-    @staticmethod
-    def decode(words):
-        """Return subframe with decoded data.
+    def __init__(self, words, position: int, sv: int):
+        self.frame_data = words
+        self.position = position
 
-        Args:
-            words (list[str]): List of words in frame as string of bits.
+        self.id = decode(self.frame_data, 2, 20, 22)
+        self.tow = decode(self.frame_data, 2, 1, 17)
 
-        Returns:
-            Subframe: Subframe of correct type based on id
-        """
+        # Adjust TOW to be in seconds and relative to start of frame
+        self.tow = self.tow * 6 - 6
 
-        id = decode(words, 2, 20, 22)
-
-        if id == 1:
-            return Subframe1(words)
-        elif id == 2:
-            return Subframe2(words)
-        elif id == 3:
-            return Subframe3(words)
-        else:
-            return None  # TODO: decode other subframe types
+        self.sv = sv
+    
+    def __repr__(self) -> str:
+        return f"Subframe {self.id}, ToW {self.tow}, sample {self.position}"
 
 
-class Subframe1:
-    id = 1
+class Subframe1(Subframe):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
-    def __init__(self, sbf):
-        self.tow = decode(sbf, 2, 1, 17)
-
-        self.week = decode(sbf, 3, 1, 10)  # 20.3.3.3.1.1
-        self.l2_code = decode(sbf, 3, 11, 12)  # 20.3.3.3.1.2
-        self.ura = decode(sbf, 3, 13, 16)  # 20.3.3.3.1.3
-        self.sv_health = decode(sbf, 3, 16, 16)  # 20.3.3.3.1.4
+        self.week = decode(self.frame_data, 3, 1, 10)  # 20.3.3.3.1.1
+        self.l2_code = decode(self.frame_data, 3, 11, 12)  # 20.3.3.3.1.2
+        self.ura = decode(self.frame_data, 3, 13, 16)  # 20.3.3.3.1.3
+        self.sv_health = decode(self.frame_data, 3, 16, 16)  # 20.3.3.3.1.4
 
         # 20.3.3.3.1.5
-        self.iodc = decode(sbf, 3, 23, 24) << 8
-        self.iodc = self.iodc | decode(sbf, 8, 1, 8)
+        self.iodc = decode(self.frame_data, 3, 23, 24) << 8
+        self.iodc = self.iodc | decode(self.frame_data, 8, 1, 8)
 
-        self.t_gd = decode(sbf, 7, 17, 24, True) * 2**-31  # 20.3.3.3.1.7
+        self.t_gd = decode(self.frame_data, 7, 17, 24, True) * 2**-31  # 20.3.3.3.1.7
 
         # Clock correction - 20.3.3.3.1.8
-        self.t_oc = decode(sbf, 8, 9, 24) * 2**4
-        self.a_f2 = decode(sbf, 9, 1, 8, True) * 2**-55
-        self.a_f1 = decode(sbf, 9, 9, 24, True) * 2**-43
-        self.a_f0 = decode(sbf, 10, 1, 22, True) * 2**-31
+        self.t_oc = decode(self.frame_data, 8, 9, 24) * 2**4
+        self.a_f2 = decode(self.frame_data, 9, 1, 8, True) * 2**-55
+        self.a_f1 = decode(self.frame_data, 9, 9, 24, True) * 2**-43
+        self.a_f0 = decode(self.frame_data, 10, 1, 22, True) * 2**-31
 
     def __repr__(self) -> str:
-        s = f"Subframe {self.id}, ToW {self.tow}, Week {self.week}, IODC {self.iodc}, "
+        s = super().__repr__() + f", Week {self.week}, IODC {self.iodc}, "
         s += f"t_oc={self.t_oc}, a_f2={self.a_f2:0.3e}, a_f1={self.a_f1:0.3e}, a_f0={self.a_f0:0.3e}"
 
         return s
 
 
-class Subframe2:
-    id = 2
+class Subframe2(Subframe):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
-    def __init__(self, sbf):
-        self.tow = decode(sbf, 2, 1, 17)
+        self.iode = decode(self.frame_data, 3, 1, 8)
+        self.c_rs = decode(self.frame_data, 3, 9, 24, True) * 2**-5
+        self.delta_n = decode(self.frame_data, 4, 1, 16, True) * 2**-43
 
-        self.iode = decode(sbf, 3, 1, 8)
-        self.c_rs = decode(sbf, 3, 9, 24, True) * 2**-5
-        self.delta_n = decode(sbf, 4, 1, 16, True) * 2**-43
-
-        self.m_0 = decode(sbf, 4, 17, 24) << 24
-        self.m_0 = self.m_0 | decode(sbf, 5, 1, 24)
+        self.m_0 = decode(self.frame_data, 4, 17, 24) << 24
+        self.m_0 = self.m_0 | decode(self.frame_data, 5, 1, 24)
         if self.m_0 > 2**31:
             self.m_0 = self.m_0 - 2**32
         self.m_0 = self.m_0 * 2**-31
 
-        self.c_uc = decode(sbf, 6, 1, 16, True) * 2**-29
+        self.c_uc = decode(self.frame_data, 6, 1, 16, True) * 2**-29
 
-        self.e = decode(sbf, 6, 17, 24) << 24
-        self.e = self.e | decode(sbf, 7, 1, 24)
+        self.e = decode(self.frame_data, 6, 17, 24) << 24
+        self.e = self.e | decode(self.frame_data, 7, 1, 24)
         self.e = self.e * 2**-33
         # assert self.e >= 0 and self.e <= 0.03, f"{self.e} is not valid"
 
-        self.c_us = decode(sbf, 8, 1, 16, True) * 2**-29
+        self.c_us = decode(self.frame_data, 8, 1, 16, True) * 2**-29
 
-        self.sqrt_a = decode(sbf, 8, 17, 24) << 24
-        self.sqrt_a = self.sqrt_a | decode(sbf, 9, 1, 24)
+        self.sqrt_a = decode(self.frame_data, 8, 17, 24) << 24
+        self.sqrt_a = self.sqrt_a | decode(self.frame_data, 9, 1, 24)
         self.sqrt_a = self.sqrt_a * 2**-19
         # assert self.sqrt_a >= 2530 and self.sqrt_a <= 8192, f"{self.sqrt_a} is not valid"
 
-        self.t_oe = decode(sbf, 10, 1, 16) * 2**4
+        self.t_oe = decode(self.frame_data, 10, 1, 16) * 2**4
         # assert self.t_oe < 604784, f"{self.t_oe} is not valid"
 
-        self.fit_interval = decode(sbf, 10, 17, 17)
-        self.aodo = decode(sbf, 10, 17, 22)
+        self.fit_interval = decode(self.frame_data, 10, 17, 17)
+        self.aodo = decode(self.frame_data, 10, 17, 22)
 
     def __repr__(self) -> str:
-        s = f"Subframe {self.id}, ToW {self.tow}, iode={self.iode}, c_rs={self.c_rs:0.1f}, delta_n={self.delta_n:0.3e}, M0={self.m_0:0.3f}, c_uc={self.c_uc:0.3e}, "
+        s = super().__repr__() + f", iode={self.iode}, c_rs={self.c_rs:0.1f}, delta_n={self.delta_n:0.3e}, M0={self.m_0:0.3f}, c_uc={self.c_uc:0.3e}, "
         s += f"e={self.e:0.4f}, c_us={self.c_us:0.3e}, sqrtA={self.sqrt_a:0.1f}, t_oe={self.t_oe}"
 
         return s
 
 
-class Subframe3:
-    id = 3
+class Subframe3(Subframe):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
-    def __init__(self, sbf):
-        self.tow = decode(sbf, 2, 1, 17)
+        self.c_ic = decode(self.frame_data, 3, 1, 16, True) * 2**-29
 
-        self.c_ic = decode(sbf, 3, 1, 16, True) * 2**-29
-
-        self.omega_0 = decode(sbf, 3, 17, 24) << 24
-        self.omega_0 = self.omega_0 | decode(sbf, 4, 1, 24)
+        self.omega_0 = decode(self.frame_data, 3, 17, 24) << 24
+        self.omega_0 = self.omega_0 | decode(self.frame_data, 4, 1, 24)
         if self.omega_0 > 2**31:
             self.omega_0 = self.omega_0 - 2**32
         self.omega_0 = self.omega_0 * 2**-31
 
-        self.c_is = decode(sbf, 5, 1, 24, True) * 2**-29
+        self.c_is = decode(self.frame_data, 5, 1, 24, True) * 2**-29
 
-        self.i_0 = decode(sbf, 5, 17, 24, True) << 24
-        self.i_0 = self.i_0 | decode(sbf, 6, 1, 24)
+        self.i_0 = decode(self.frame_data, 5, 17, 24, True) << 24
+        self.i_0 = self.i_0 | decode(self.frame_data, 6, 1, 24)
         if self.i_0 > 2**31:
             self.i_0 = self.i_0 - 2**32
         self.i_0 = self.i_0 * 2**-31
 
-        self.c_rc = decode(sbf, 7, 1, 16, True) * 2**-5
+        self.c_rc = decode(self.frame_data, 7, 1, 16, True) * 2**-5
 
-        self.omega = decode(sbf, 7, 17, 24) << 24
-        self.omega = self.omega | decode(sbf, 8, 1, 24)
+        self.omega = decode(self.frame_data, 7, 17, 24) << 24
+        self.omega = self.omega | decode(self.frame_data, 8, 1, 24)
         if self.omega > 2**31:
             self.omega = self.omega - 2**32
         self.omega = self.omega * 2**-31
 
-        self.omega_dot = decode(sbf, 9, 1, 24, True) * 2**-43
+        self.omega_dot = decode(self.frame_data, 9, 1, 24, True) * 2**-43
         # assert self.omega_dot >= -6.33e-7 and self.omega_dot <= 0, f"{self.omega_dot} is not valid"
-        self.idot = decode(sbf, 10, 9, 22, True) * 2**-43
+        self.idot = decode(self.frame_data, 10, 9, 22, True) * 2**-43
 
-        self.iode = decode(sbf, 10, 1, 8)
+        self.iode = decode(self.frame_data, 10, 1, 8)
 
     def __repr__(self) -> str:
-        s = f"Subframe {self.id}, ToW {self.tow}, c_ic={self.c_ic:0.3e}, omega_0={self.omega_0:0.3f}, c_is={self.c_is:0.3e}, i_0={self.i_0:0.3f}, c_rc={self.c_rc:0.2f}, "
+        s = super().__repr__() + f", c_ic={self.c_ic:0.3e}, omega_0={self.omega_0:0.3f}, c_is={self.c_is:0.3e}, i_0={self.i_0:0.3f}, c_rc={self.c_rc:0.2f}, "
         s += f"omega={self.omega:0.3f}, omega_dot={self.omega_dot:0.3e}, idot={self.idot:0.3e}, iode={self.iode}"
 
         return s
@@ -247,18 +265,21 @@ class FrameDecoder:
     def __init__(self):
         self.reset()
 
-    def reset(self):
+    def reset(self, sv=-1):
         """Reset decoder to initial state.
         """
 
         self.sample_buffer = []
+        self.sample_positions = []
+
+        self.sv = sv
 
         # State
         self.preambles = []
         self.checked = 0
         self.idx = 0
 
-    def decode_subframe(self, idx: int, inverted: bool) -> Subframe:
+    def process_subframe(self, idx: int, inverted: bool) -> Subframe:
         """Decode samples into subframe and return values.
 
         Args:
@@ -293,16 +314,22 @@ class FrameDecoder:
                 print("[Decoder] Invalid frame")
                 return None
 
-            words.append(arr2bin(word))
+            # XOR with D30* to get correct value
+            words.append(arr2bin(word * valid))
             last_parity = word[-2:]
 
-        return Subframe.decode(words)
+        return decode_subframe(words, self.sample_positions[idx], self.sv)
 
-    def process(self, sample: float) -> Subframe:
+    def process(self, sample: float, sample_pos: int) -> Subframe:
         """Process a single sample. A frame is returned if found within previous samples.
+
+        The sample_pos argument is used to keep accurate timing. It is the
+        index of the exact start of the PRN code that generated a given sample.
+        It should be in units of samples of the original signal.
 
         Args:
             sample (float): Sample
+            sample_pos (int): Position of sample within data stream.
 
         Returns:
             Subframe: Decoded frame. If no frame is decoded, returns None.
@@ -312,9 +339,10 @@ class FrameDecoder:
         sample = 1 if sample > 0 else -1
 
         self.sample_buffer.append(sample)
+        self.sample_positions.append(sample_pos)
         self.idx += 1
 
-        # Exit if there's no enough samples to do anything
+        # Exit if there's not enough samples to do anything
         if len(self.sample_buffer) < 8 * 20:
             return None
 
@@ -351,7 +379,7 @@ class FrameDecoder:
 
             if valid:
                 # TODO: clean up sample buffer after it's used
-                return self.decode_subframe(i, inverted)
+                return self.process_subframe(i, inverted)
 
 
 class SampleBuffer:
@@ -425,6 +453,7 @@ class TrackingChannel:
 
         self.buffer = SampleBuffer()
         self.decoder = FrameDecoder()
+        self.frames = []
 
         self.initialized = False
 
@@ -461,7 +490,7 @@ class TrackingChannel:
         self.initialized = True
         self.first = True
 
-        self.decoder.reset()
+        self.decoder.reset(self.sv)
 
         if debug:
             self.debug = SimpleNamespace(
@@ -509,6 +538,9 @@ class TrackingChannel:
             signal = self.buffer.pop(blksize)
             assert signal is not None
 
+            # Keep track of start of block for timing
+            block_start = self.sample_position
+
             self.sample_position += len(signal)
 
             # Generate code replicas
@@ -545,10 +577,11 @@ class TrackingChannel:
             self.code_freq = CODE_FREQ - self.code_dll.update(code_err)
 
             # Send sample to decoder
-            frame = self.decoder.process(prompt)
+            frame = self.decoder.process(prompt, block_start)
 
             # TODO: do something other than print frames
             if frame:
+                self.frames.append(frame)
                 print(f"[Decoder SV: {self.sv}] " + str(frame))
 
             if self.debug is not None:
@@ -665,3 +698,12 @@ class GpsReceiver:
         for i in range(len(self.channels)):
             if self.acquired[i] > 0:
                 self.channels[i].update(samples)
+
+    def dump_frames(self):
+        frames = []
+
+        for chan in self.channels:
+            while len(chan.frames) > 0:
+                frames.append(chan.frames.pop())
+        
+        return frames
