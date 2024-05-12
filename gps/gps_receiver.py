@@ -115,11 +115,7 @@ def decode_subframe(words, position, sv):
 
     id = decode(words, 2, 20, 22)
 
-    frame_classes = {
-        1: Subframe1,
-        2: Subframe2,
-        3: Subframe3
-    }
+    frame_classes = {1: Subframe1, 2: Subframe2, 3: Subframe3}
 
     try:
         return frame_classes[id](words, position, sv)
@@ -140,7 +136,7 @@ class Subframe:
         self.tow = self.tow * 6 - 6
 
         self.sv = sv
-    
+
     def __repr__(self) -> str:
         return f"Subframe {self.id}, ToW {self.tow}, sample {self.position}"
 
@@ -208,7 +204,10 @@ class Subframe2(Subframe):
         self.aodo = decode(self.frame_data, 10, 17, 22)
 
     def __repr__(self) -> str:
-        s = super().__repr__() + f", iode={self.iode}, c_rs={self.c_rs:0.1f}, delta_n={self.delta_n:0.3e}, M0={self.m_0:0.3f}, c_uc={self.c_uc:0.3e}, "
+        s = (
+            super().__repr__()
+            + f", iode={self.iode}, c_rs={self.c_rs:0.1f}, delta_n={self.delta_n:0.3e}, M0={self.m_0:0.3f}, c_uc={self.c_uc:0.3e}, "
+        )
         s += f"e={self.e:0.4f}, c_us={self.c_us:0.3e}, sqrtA={self.sqrt_a:0.1f}, t_oe={self.t_oe}"
 
         return s
@@ -249,7 +248,10 @@ class Subframe3(Subframe):
         self.iode = decode(self.frame_data, 10, 1, 8)
 
     def __repr__(self) -> str:
-        s = super().__repr__() + f", c_ic={self.c_ic:0.3e}, omega_0={self.omega_0:0.3f}, c_is={self.c_is:0.3e}, i_0={self.i_0:0.3f}, c_rc={self.c_rc:0.2f}, "
+        s = (
+            super().__repr__()
+            + f", c_ic={self.c_ic:0.3e}, omega_0={self.omega_0:0.3f}, c_is={self.c_is:0.3e}, i_0={self.i_0:0.3f}, c_rc={self.c_rc:0.2f}, "
+        )
         s += f"omega={self.omega:0.3f}, omega_dot={self.omega_dot:0.3e}, idot={self.idot:0.3e}, iode={self.iode}"
 
         return s
@@ -266,8 +268,7 @@ class FrameDecoder:
         self.reset()
 
     def reset(self, sv=-1):
-        """Reset decoder to initial state.
-        """
+        """Reset decoder to initial state."""
 
         self.sample_buffer = []
         self.sample_positions = []
@@ -320,7 +321,7 @@ class FrameDecoder:
 
         return decode_subframe(words, self.sample_positions[idx], self.sv)
 
-    def process(self, sample: float, sample_pos: int) -> Subframe:
+    def process(self, sample: float, sample_pos: float) -> Subframe:
         """Process a single sample. A frame is returned if found within previous samples.
 
         The sample_pos argument is used to keep accurate timing. It is the
@@ -329,7 +330,7 @@ class FrameDecoder:
 
         Args:
             sample (float): Sample
-            sample_pos (int): Position of sample within data stream.
+            sample_pos (float): Position of sample within data stream.
 
         Returns:
             Subframe: Decoded frame. If no frame is decoded, returns None.
@@ -500,6 +501,7 @@ class TrackingChannel:
                 code_err=[],
                 code_phase=[],
                 code_pos=[],
+                iq=[],
             )
         else:
             self.debug = None
@@ -576,8 +578,12 @@ class TrackingChannel:
             code_err = (np.abs(early) - np.abs(late)) / (np.abs(early) + np.abs(late))
             self.code_freq = CODE_FREQ - self.code_dll.update(code_err)
 
+            # Fine time
+            r = np.abs(late) / np.abs(early)
+            x = (1 - r) * (1 - self.early_late_spacing) / (1 + r)
+
             # Send sample to decoder
-            frame = self.decoder.process(prompt, block_start)
+            frame = self.decoder.process(prompt, block_start + x)
 
             # TODO: do something other than print frames
             if frame:
@@ -591,6 +597,7 @@ class TrackingChannel:
                 self.debug.code_err.append(code_err)
                 self.debug.code_phase.append(self.code_phase)
                 self.debug.code_pos.append(self.sample_position)
+                self.debug.iq.append(prompt)
 
             # Update phase step and block size for next iteration
             code_phase_step = self.code_freq / self.fs
@@ -705,5 +712,5 @@ class GpsReceiver:
         for chan in self.channels:
             while len(chan.frames) > 0:
                 frames.append(chan.frames.pop())
-        
+
         return frames

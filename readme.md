@@ -27,7 +27,7 @@ pip install -r requirements.txt
 * 4.092 Msps
 
 ```bash
-./gps-sdr-sim/gps-sdr-sim -e data/brdc2570.23n -l 38.986008,-76.942566,10.0 -b 8 -d 60 -s 4092000 -o data/gpssim.ci16
+./gps-sdr-sim/gps-sdr-sim -e data/brdc2570.23n -l 38.986008,-76.942566,10.0 -b 8 -d 60 -s 4092000 -o data/1/gpssim.ci16
 ```
 
 ## Example
