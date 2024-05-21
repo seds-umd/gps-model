@@ -660,6 +660,7 @@ class GpsReceiver:
 
         # TODO: run acquisition continuously instead of just at start
 
+        # Run if no satellites are currently acquired
         if np.sum(self.acquired > 0) == 0:
             # Run acquisition
 
