@@ -1,7 +1,7 @@
 import numpy as np
 from types import SimpleNamespace
 
-from . import gps, prn
+from . import gps, prn_gen
 
 CODE_FREQ = 1.023e6
 CODES_PER_BIT = 20
@@ -138,7 +138,7 @@ class Subframe:
         self.sv = sv
 
     def __repr__(self) -> str:
-        return f"Subframe {self.id}, ToW {self.tow}, sample {self.position}"
+        return f"SV {self.sv}, Subframe {self.id}, ToW {self.tow}, sample {self.position}"
 
 
 class Subframe1(Subframe):
@@ -219,11 +219,11 @@ class Subframe3(Subframe):
 
         self.c_ic = decode(self.frame_data, 3, 1, 16, True) * 2**-29
 
-        self.omega_0 = decode(self.frame_data, 3, 17, 24) << 24
-        self.omega_0 = self.omega_0 | decode(self.frame_data, 4, 1, 24)
-        if self.omega_0 > 2**31:
-            self.omega_0 = self.omega_0 - 2**32
-        self.omega_0 = self.omega_0 * 2**-31
+        self.Omega_0 = decode(self.frame_data, 3, 17, 24) << 24
+        self.Omega_0 = self.Omega_0 | decode(self.frame_data, 4, 1, 24)
+        if self.Omega_0 > 2**31:
+            self.Omega_0 = self.Omega_0 - 2**32
+        self.Omega_0 = self.Omega_0 * 2**-31
 
         self.c_is = decode(self.frame_data, 5, 1, 24, True) * 2**-29
 
@@ -241,8 +241,8 @@ class Subframe3(Subframe):
             self.omega = self.omega - 2**32
         self.omega = self.omega * 2**-31
 
-        self.omega_dot = decode(self.frame_data, 9, 1, 24, True) * 2**-43
-        # assert self.omega_dot >= -6.33e-7 and self.omega_dot <= 0, f"{self.omega_dot} is not valid"
+        self.Omega_dot = decode(self.frame_data, 9, 1, 24, True) * 2**-43
+        # assert self.Omega_dot >= -6.33e-7 and self.Omega_dot <= 0, f"{self.Omega_dot} is not valid"
         self.idot = decode(self.frame_data, 10, 9, 22, True) * 2**-43
 
         self.iode = decode(self.frame_data, 10, 1, 8)
@@ -250,9 +250,9 @@ class Subframe3(Subframe):
     def __repr__(self) -> str:
         s = (
             super().__repr__()
-            + f", c_ic={self.c_ic:0.3e}, omega_0={self.omega_0:0.3f}, c_is={self.c_is:0.3e}, i_0={self.i_0:0.3f}, c_rc={self.c_rc:0.2f}, "
+            + f", c_ic={self.c_ic:0.3e}, Omega_0={self.Omega_0:0.3f}, c_is={self.c_is:0.3e}, i_0={self.i_0:0.3f}, c_rc={self.c_rc:0.2f}, "
         )
-        s += f"omega={self.omega:0.3f}, omega_dot={self.omega_dot:0.3e}, idot={self.idot:0.3e}, iode={self.iode}"
+        s += f"omega={self.omega:0.3f}, Omega_dot={self.Omega_dot:0.3e}, idot={self.idot:0.3e}, iode={self.iode}"
 
         return s
 
@@ -477,7 +477,7 @@ class TrackingChannel:
         self.code_est = code_est
 
         # Reference code sequence
-        code_ref = prn.generate(sv)
+        code_ref = prn_gen.generate(sv)
         code_ref = [code_ref[-1]] + code_ref + [code_ref[0]]
         self.code_ref = np.array(code_ref)
 

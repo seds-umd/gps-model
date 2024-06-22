@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from typing import Union, List, Tuple
 
-from . import prn
+from . import prn_gen
 
 class PLL:
     def __init__(self, bw: float, zeta: float, gain: float, ts: float):
@@ -96,7 +96,7 @@ def acquisition(
 
     # Iterate through all possible satellites
     for sv_idx in sv_range:
-        Y = np.fft.fft(prn.sample(sv_idx, f_s, fft_n))
+        Y = np.fft.fft(prn_gen.sample(sv_idx, f_s, fft_n))
         Zs = np.zeros((len(shift_idx), fft_n))
 
         # Iterate through frequency shifts

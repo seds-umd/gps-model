@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from . import prn
+from . import prn_gen
 
 
 def generate_gps(
@@ -30,7 +30,7 @@ def generate_gps(
     block = int(f_s / 50)
     assert f_s % 50 == 0, "Sample rate must be divisible by 50"
 
-    code = prn.sample(sv, f_s, block, code_phase, sample_phase)
+    code = prn_gen.sample(sv, f_s, block, code_phase, sample_phase)
     num_bits = int(np.ceil(n / block))
     bits = np.random.choice([-1, 1], size=num_bits)
 
