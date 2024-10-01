@@ -2,3 +2,5 @@ venv/
 __pycache__/
 data/
 !data/brdc2570.23n
+
+*.egg-info
