@@ -1,5 +1,4 @@
 import numpy as np
-import matplotlib.pyplot as plt
 
 from . import prn_gen
 
@@ -23,8 +22,10 @@ def generate_gps(
         doppler (float): Frequency shift of signal
         doppler2 (float): Derivative of frequency shift
         code_phase (int): Offset of PRN code
-        signal_power (float): Power of input signal in dBm. If not given, no noise is generated. Between -130 and -120 dBm is common.
+        signal_power (float): Power of input signal in dBm. If not given, no noise is generated. Real world minimum is -128.5 dBm.
     """
+
+    n = int(n)
 
     # Generate C/A code apply to data
     block = int(f_s / 50)
@@ -48,10 +49,21 @@ def generate_gps(
 
     # Add noise
     if signal_power is not None:
-        cn0 = signal_power + 174
-        cn = cn0 - 10 * np.log10(f_s / 2)
-        amplitude = 10 ** (-cn / 20)  # 20 because amplitude
-        noise = amplitude * (np.random.randn(n) + 1j * np.random.randn(n)) / np.sqrt(2)
+        # Calculate power
+        samples_power = np.mean(np.abs(samples) ** 2)
+
+        # Create noise at same power level as samples
+        noise = np.random.randn(n) + 1j * np.random.randn(n)
+        noise_power = np.mean(np.abs(noise) ** 2)
+        noise *= np.sqrt(samples_power / noise_power)
+
+        # Set noise level to correct ratio
+        noise_power_dbm = -174 + 10 * np.log10(f_s)
+        snr = signal_power - noise_power_dbm
+        snr_ratio = 10 ** (snr / 10)
+        noise /= np.sqrt(snr_ratio)
+
+        # Add noise to samples
         samples = samples + noise
 
         # Normalize back to unity power

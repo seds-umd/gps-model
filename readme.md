@@ -26,6 +26,12 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+For better performance:
+
+```bash
+pip install mkl-fft mkl-service
+```
+
 ## Generate simulated GPS data
 
 * 60 seconds

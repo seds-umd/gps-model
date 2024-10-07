@@ -1,4 +1,5 @@
 import numpy as np
+import functools
 
 # Taken from https://github.com/natronics/gps/blob/master/gps/prn.py
 # Made a few modifications to work better for this project
@@ -68,6 +69,7 @@ def shift(register, feedback, output):
     return out
 
 
+@functools.lru_cache
 def generate(sv):
     """Build the CA code (PRN) for a given satellite ID
 

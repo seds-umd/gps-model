@@ -1,8 +1,16 @@
 import numpy as np
-import matplotlib.pyplot as plt
 from typing import Union, List, Tuple
 
 from . import prn_gen
+
+# Use faster FFT lib if available
+try:
+    import mkl_fft
+
+    _fft = mkl_fft
+except ModuleNotFoundError:
+    _fft = np.fft
+
 
 class PLL:
     def __init__(self, bw: float, zeta: float, gain: float, ts: float):
@@ -19,12 +27,12 @@ class PLL:
         self.reset()
 
     def set_params(self, bw: float, zeta: float, gain: float, ts: float):
-        w_n = 8 * zeta * bw / (4 * zeta**2 +1)
-        tau1 = gain / (w_n*w_n)
+        w_n = 8 * zeta * bw / (4 * zeta**2 + 1)
+        tau1 = gain / (w_n * w_n)
         tau2 = 2 * zeta / w_n
 
-        self.c1 = tau2 / tau1 # derivative term
-        self.c2 = ts / tau1 # proportional term
+        self.c1 = tau2 / tau1  # derivative term
+        self.c2 = ts / tau1  # proportional term
 
     def update(self, err):
         nco = self.last_nco + self.c1 * (err - self.last_err) + err * self.c2
@@ -78,10 +86,13 @@ def acquisition(
         print(f"[Acquisition] {bin_size_actual:0.1f}Hz frequency bins")
 
     # FFT of samples is always the same so we can pre-compute it
-    X = np.fft.fft(x[0:fft_n]).conj()
+    X = _fft.fft(x[0:fft_n]).conj()
 
     # Find frequency shifts
-    shift_idx = np.arange(int((f_if - max_shift) / bin_size_actual), int((f_if + max_shift) / bin_size_actual) + 1)
+    shift_idx = np.arange(
+        int((f_if - max_shift) / bin_size_actual),
+        int((f_if + max_shift) / bin_size_actual) + 1,
+    )
     shift_freq = shift_idx * bin_size_actual
 
     if sv == None:
@@ -96,13 +107,13 @@ def acquisition(
 
     # Iterate through all possible satellites
     for sv_idx in sv_range:
-        Y = np.fft.fft(prn_gen.sample(sv_idx, f_s, fft_n))
+        Y = _fft.fft(prn_gen.sample(sv_idx, f_s, fft_n))
         Zs = np.zeros((len(shift_idx), fft_n))
 
         # Iterate through frequency shifts
         for i in range(len(shift_idx)):
             Z = X * np.roll(Y, shift_idx[i])
-            Zs[i] = np.abs(np.fft.ifft(Z))
+            Zs[i] = np.abs(_fft.ifft(Z))
 
         # Only check first cycle of code, TODO: handle error when there are less than 1ms worth of samples
         Zs = Zs[:, 0 : int(f_s / 1e3)]
@@ -122,7 +133,16 @@ def acquisition(
 
     return results
 
-def fine_acquisition(x: np.ndarray, f_s: float, fft_n: int, dec_factor: int, sv: int, code_phase: int, verbose: bool = False):
+
+def fine_acquisition(
+    x: np.ndarray,
+    f_s: float,
+    fft_n: int,
+    dec_factor: int,
+    sv: int,
+    code_phase: int,
+    verbose: bool = False,
+):
     """Perform fine frequency acquisition by decimation.
 
     Frequency resolution is `f_s/(fft_n*dec_factor)`
@@ -135,28 +155,44 @@ def fine_acquisition(x: np.ndarray, f_s: float, fft_n: int, dec_factor: int, sv:
         sv (int): SV number found during initial acquisition.
         code_phase (int): Code phase found during initial acquisition.
         verbose (bool, optional): Print status/debug info. Defaults to False.
-    
+
     Returns:
         Tuple of frequency estimate and SNR.
     """
 
-    assert len(x) >= fft_n*dec_factor, f"Not enough samples provided, {len(x)} < {fft_n*dec_factor}"
+    assert (
+        len(x) >= fft_n * dec_factor
+    ), f"Not enough samples provided, {len(x)} < {fft_n*dec_factor}"
 
-    x_dec = x[0:fft_n*dec_factor] * prn.sample(sv, f_s, fft_n*dec_factor, offset_samples=code_phase)
-    x_dec = np.sum(x_dec.reshape(-1, dec_factor), axis=1) # Acting as a mean but absolute value doesn't matter
+    x_dec = x[0 : fft_n * dec_factor] * prn.sample(
+        sv, f_s, fft_n * dec_factor, offset_samples=code_phase
+    )
+    x_dec = np.sum(
+        x_dec.reshape(-1, dec_factor), axis=1
+    )  # Acting as a mean but absolute value doesn't matter
 
-    f = np.linspace(f_s/-2, f_s/2, fft_n) / dec_factor
+    f = np.linspace(f_s / -2, f_s / 2, fft_n) / dec_factor
 
     X = np.abs(np.fft.fftshift(np.fft.fft(x_dec)))
 
     freq_est = f[np.argmax(X)]
 
     if verbose:
-        print(f"[Acquisition] Fine freq: {freq_est:0.1f} Hz, +-{f_s/(fft_n*dec_factor*2):0.1f} Hz")
+        print(
+            f"[Acquisition] Fine freq: {freq_est:0.1f} Hz, +-{f_s/(fft_n*dec_factor*2):0.1f} Hz"
+        )
 
     return freq_est, X[np.argmax(X)] / np.mean(X)
 
-def tracking(x: np.ndarray, f_s: float, sv: int, freq_est: float, code_est: int, debug_results: bool = False):
+
+def tracking(
+    x: np.ndarray,
+    f_s: float,
+    sv: int,
+    freq_est: float,
+    code_est: int,
+    debug_results: bool = False,
+):
     carrier_pll = PLL(10, 0.707, 0.25, 1e-3)
     code_dll = PLL(1, 0.707, 1, 1e-3)
 
@@ -173,10 +209,10 @@ def tracking(x: np.ndarray, f_s: float, sv: int, freq_est: float, code_est: int,
     carrier_phase = 0
     carrier_freq = freq_est
 
-    code_phase = 0 # units of code chips
+    code_phase = 0  # units of code chips
     code_freq = code_freq_basis
 
-    sample_position = int(f_s/1e3 - code_est)
+    sample_position = int(f_s / 1e3 - code_est)
 
     # Outputs
     res_samples = []
@@ -194,7 +230,7 @@ def tracking(x: np.ndarray, f_s: float, sv: int, freq_est: float, code_est: int,
         blksize = int(np.ceil((1023 - code_phase) / code_phase_step))
 
         # Get chunk of data
-        raw_signal = x[sample_position:sample_position + blksize]
+        raw_signal = x[sample_position : sample_position + blksize]
         sample_position = sample_position + blksize
 
         # Exit if not enough samples
@@ -202,7 +238,7 @@ def tracking(x: np.ndarray, f_s: float, sv: int, freq_est: float, code_est: int,
             break
 
         # Generate code replicas
-        tcode = code_phase + np.arange(blksize, dtype=float)*code_phase_step
+        tcode = code_phase + np.arange(blksize, dtype=float) * code_phase_step
         prompt_code = code_ref[np.ceil(tcode).astype(int)]
 
         tcode_early = np.ceil(tcode - early_late_spacing).astype(int)
@@ -248,6 +284,14 @@ def tracking(x: np.ndarray, f_s: float, sv: int, freq_est: float, code_est: int,
     res_samples = np.array(res_samples, dtype=np.complex64)
 
     if debug_results:
-        return res_samples, res_carr_freq, res_carr_err, res_code_freq, res_code_err, res_code_phase, res_code_pos
+        return (
+            res_samples,
+            res_carr_freq,
+            res_carr_err,
+            res_code_freq,
+            res_code_err,
+            res_code_phase,
+            res_code_pos,
+        )
     else:
         return res_samples
