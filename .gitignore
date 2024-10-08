@@ -5,3 +5,5 @@ data/
 !data/brdc2570.23n
 
 *.egg-info
+
+build

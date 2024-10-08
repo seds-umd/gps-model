@@ -49,13 +49,12 @@ def generate_gps(
 
     # Add noise
     if signal_power is not None:
-        # Calculate power
-        samples_power = np.mean(np.abs(samples) ** 2)
+        # Samples start at unity power
 
-        # Create noise at same power level as samples
-        noise = np.random.randn(n) + 1j * np.random.randn(n)
-        noise_power = np.mean(np.abs(noise) ** 2)
-        noise *= np.sqrt(samples_power / noise_power)
+        # Create noise at unity power
+        noise = np.random.uniform(-1, 1, n) + 1j * np.random.uniform(-1, 1, n)
+        # Power is 2/3 = var(Re) + var(Im)
+        noise /= np.sqrt(2/3)
 
         # Set noise level to correct ratio
         noise_power_dbm = -174 + 10 * np.log10(f_s)
