@@ -39,7 +39,7 @@ pip install mkl-fft mkl-service
 * 4.092 Msps
 
 ```bash
-./gps-sdr-sim/gps-sdr-sim -e data/brdc2570.23n -l 38.986008,-76.942566,10.0 -b 8 -d 60 -s 4092000 -o data/1/gpssim.ci16
+./external/gps-sdr-sim/gps-sdr-sim -e data/brdc2570.23n -l 38.986008,-76.942566,10.0 -b 8 -d 60 -s 4092000 -o data/1/gpssim.ci16
 ```
 
 Output (sv, azimuth, elevation, range, ionosphere_delay):
