@@ -4,3 +4,6 @@
 [submodule "SoftGNSS"]
 	path = SoftGNSS
 	url = https://github.com/TMBOC/SoftGNSS
+[submodule "external/gps-sdr-sim"]
+	path = external/gps-sdr-sim
+	url = git@github.com:osqzss/gps-sdr-sim.git
