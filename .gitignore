@@ -7,3 +7,7 @@ data/
 *.egg-info
 
 build
+target
+*.so
+!src/model/*.so
+Cargo.lock

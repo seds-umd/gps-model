@@ -1,0 +1,32 @@
+[build-system]
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "gps"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+]
+dynamic = ["version"]
+dependencies = [
+    "click >= 8.1.7, <9",
+    "matplotlib >=3.7.3, <4",
+    "numpy >=1.24.4, <2",
+    "scipy >=1.10.1, <2",
+]
+
+[tool.maturin]
+module-name = "gps.rust"
+features = ["pyo3/extension-module"]
+
+[tool.setuptools.packages.find]
+where = ["gps"]
+
+[tool.setuptools.package-data]
+mypkg = [
+    "cmodel/fft/libgmp.so.11",
+    "cmodel/fft/libIp_xfft_v9_1_bitacc_cmodel.so",
+]
