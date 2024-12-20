@@ -164,7 +164,7 @@ def fine_acquisition(
         len(x) >= fft_n * dec_factor
     ), f"Not enough samples provided, {len(x)} < {fft_n*dec_factor}"
 
-    x_dec = x[0 : fft_n * dec_factor] * prn.sample(
+    x_dec = x[0 : fft_n * dec_factor] * prn_gen.sample(
         sv, f_s, fft_n * dec_factor, offset_samples=code_phase
     )
     x_dec = np.sum(
@@ -201,7 +201,7 @@ def tracking(
     code_freq_basis = 1.023e6
     early_late_spacing = 0.5
 
-    code_ref = prn.generate(sv)
+    code_ref = prn_gen.generate(sv)
     code_ref = [code_ref[-1]] + code_ref + [code_ref[0]]
     code_ref = np.array(code_ref)
 
