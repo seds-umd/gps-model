@@ -10,6 +10,82 @@ Planned:
 * Calculating position fix
 * Real time processing from SDR
 
+## Reproducible reference checks
+
+From the repository root, after installing the requirements:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+The tests cover exact signed fine-FFT frequency bins; coarse code phases across
+the full C/A epoch, including the wrap; two-second acquisition-to-tracking
+convergence; irregular stream chunks; tracking restart and blank-input recovery;
+the public receiver at decimation factors 1, 4, 8 and 16; navigation field boundary
+values; and capture-file validation. These use seeded synthetic signals, not
+live-RF sensitivity measurements or a position solution. Complete LNAV checks
+also stream acquisition through tracking into subframes 1, 2 and 3 with signed
+carrier offsets, shifted code phases and both signal polarities, without
+injecting decoded bits into the receiver.
+
+Coarse acquisition correlates a whole number of 1 ms C/A periods rather than
+rounding to a power of two. At 4.092 Msps, a 500 Hz search bin uses 8,184 samples;
+a power-of-two window splices the code and can return an incorrect phase near
+the epoch boundary. Exact circular code-period correlation assumes the sample
+rate is a whole multiple of 1 kHz, as in the 4 and 4.092 Msps capture settings;
+other rates need resampling or separate phase-error qualification. Fine bins use `fftfreq`: spacing is
+`f_s / (fft_n * dec_factor)` and DC is exactly zero.
+
+`TrackingChannel.start` clears its previous signal, loop and decoder state and
+requires a phase within one C/A period. Supply the same initial sample epoch
+used by acquisition. Streaming chunk boundaries preserve tracking state.
+Zero-energy correlators leave the loop estimates unchanged and skip decoder
+input and clear partial navigation decoding; this prevents joining a frame
+across an erased interval. It prevents NaN corruption, but does not implement a general lock-loss
+detector or automatic reacquisition.
+
+For FPGA acquisition results, frequency is a signed 12-bit bin index and code
+phase refers to the front end's 4092-sample timestamp epoch. Align a capture to
+that epoch before seeding the Python tracker; a phase for an unrelated block
+is invalid. The standalone `gps.tracking` helper and the streaming receiver
+are separate implementations; streaming lifecycle tests exercise the latter.
+
+Navigation decoding remains partial. Corrected fields are the six-bit health
+value, two's-complement negative limits, split signed 32-bit orbital fields,
+and subframe-2 AODO (word 10 bits 18–22, 900 seconds per unit, excluding the
+fit flag), plus the 16-bit subframe-3 inclination sine correction. Subframe
+time-of-week wraps modulo one week, including a HOW count of zero.
+AODO 27,900 seconds is the specification's invalid-NMCT indicator,
+not an ordinary valid age. See [IS-GPS-200N](https://www.gps.gov/sites/default/files/2025-07/IS-GPS-200N.pdf),
+sections 20.3.3.3.1.4 and 20.3.3.4.1–.2 and Table 20-III. Boundary tests do not
+establish a navigation fix. The decoder now returns a complete frame on its
+last 1 ms correlator sample and retains at most one six-second subframe
+(6,000 samples and positions). It rejects a corrupted frame and can find the
+following frame; `dump_frames()` drains frames in sample-position order across
+channels. Frame positions convert the DLL residual and starting replica phase
+from chips into input samples; a converged half-sample signal shift is recovered
+at the decoder input. This is a relative timing check, not absolute range calibration.
+Tests exercise all four previous-parity states and every single-bit
+error in a word; fixed words were cross-checked with the pinned gps-sdr-sim C
+encoder. This qualifies the deterministic synthetic fixtures, not noisy RF bit
+synchronization, pages in subframes 4/5, ephemeris consistency, pseudoranges or
+a complete navigation solution. The preamble detector still requires an exact
+20-correlator-samples-per-bit pattern, so realistic bit-edge jitter and noise
+need separate receiver work.
+
+## Capture-file input
+
+```bash
+python main.py capture.iq --fs 4092000 --width 8
+```
+
+The capture must contain alternating signed I, Q integers. `--width` is 8, 16
+or 32 bits per integer; multibyte integers are little-endian. The filename does
+not determine width. Missing, empty or incomplete I/Q files and invalid sample
+rates fail with an explanatory CLI error. The file is memory-mapped and converted
+in roughly one-second chunks, retaining the final partial chunk. Use the actual
+capture's sample rate; input validation does not establish RF suitability.
+
 ## Setup
 
 Clone recursively:
