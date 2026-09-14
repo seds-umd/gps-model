@@ -23,7 +23,9 @@ the full C/A epoch, including the wrap; two-second acquisition-to-tracking
 convergence; irregular stream chunks; tracking restart and blank-input recovery;
 the public receiver at decimation factors 1, 4, 8 and 16; navigation field boundary
 values; and capture-file validation. These use seeded synthetic signals, not
-live-RF sensitivity measurements or a position solution.
+live-RF sensitivity measurements or a position solution. Complete LNAV checks
+also stream acquisition through tracking into subframes 1, 2 and 3 in both
+signal polarities, without injecting decoded bits into the receiver.
 
 Coarse acquisition correlates a whole number of 1 ms C/A periods rather than
 rounding to a power of two. At 4.092 Msps, a 500 Hz search bin uses 8,184 samples;
@@ -37,7 +39,8 @@ other rates need resampling or separate phase-error qualification. Fine bins use
 requires a phase within one C/A period. Supply the same initial sample epoch
 used by acquisition. Streaming chunk boundaries preserve tracking state.
 Zero-energy correlators leave the loop estimates unchanged and skip decoder
-input; this prevents NaN corruption, but does not implement a general lock-loss
+input and clear partial navigation decoding; this prevents joining a frame
+across an erased interval. It prevents NaN corruption, but does not implement a general lock-loss
 detector or automatic reacquisition.
 
 For FPGA acquisition results, frequency is a signed 12-bit bin index and code
@@ -49,10 +52,22 @@ are separate implementations; streaming lifecycle tests exercise the latter.
 Navigation decoding remains partial. Corrected fields are the six-bit health
 value, two's-complement negative limits, split signed 32-bit orbital fields,
 and subframe-2 AODO (word 10 bits 18–22, 900 seconds per unit, excluding the
-fit flag). AODO 27,900 seconds is the specification's invalid-NMCT indicator,
+fit flag), plus the 16-bit subframe-3 inclination sine correction. Subframe
+time-of-week wraps modulo one week, including a HOW count of zero.
+AODO 27,900 seconds is the specification's invalid-NMCT indicator,
 not an ordinary valid age. See [IS-GPS-200N](https://www.gps.gov/sites/default/files/2025-07/IS-GPS-200N.pdf),
 sections 20.3.3.3.1.4 and 20.3.3.4.1–.2 and Table 20-III. Boundary tests do not
-qualify the full parity/frame decoder or establish a navigation fix.
+establish a navigation fix. The decoder now returns a complete frame on its
+last 1 ms correlator sample and retains at most one six-second subframe
+(6,000 samples and positions). It rejects a corrupted frame and can find the
+following frame; `dump_frames()` drains frames in sample-position order across
+channels. Tests exercise all four previous-parity states and every single-bit
+error in a word; fixed words were cross-checked with the pinned gps-sdr-sim C
+encoder. This qualifies the deterministic synthetic fixtures, not noisy RF bit
+synchronization, pages in subframes 4/5, ephemeris consistency, pseudoranges or
+a complete navigation solution. The preamble detector still requires an exact
+20-correlator-samples-per-bit pattern, so realistic bit-edge jitter and noise
+need separate receiver work.
 
 ## Capture-file input
 

@@ -1,5 +1,7 @@
 import numpy as np
 from types import SimpleNamespace
+from collections import deque
+from itertools import islice
 
 from . import gps, prn_gen
 
@@ -130,7 +132,7 @@ class Subframe:
         self.tow = decode(self.frame_data, 2, 1, 17)
 
         # Adjust TOW to be in seconds and relative to start of frame
-        self.tow = self.tow * 6 - 6
+        self.tow = (self.tow * 6 - 6) % 604800
 
         self.sv = sv
 
@@ -222,7 +224,7 @@ class Subframe3(Subframe):
             self.Omega_0 = self.Omega_0 - 2**32
         self.Omega_0 = self.Omega_0 * 2**-31
 
-        self.c_is = decode(self.frame_data, 5, 1, 24, True) * 2**-29
+        self.c_is = decode(self.frame_data, 5, 1, 16, True) * 2**-29
 
         self.i_0 = decode(self.frame_data, 5, 17, 24) << 24
         self.i_0 = self.i_0 | decode(self.frame_data, 6, 1, 24)
@@ -267,14 +269,13 @@ class FrameDecoder:
     def reset(self, sv=-1):
         """Reset decoder to initial state."""
 
-        self.sample_buffer = []
-        self.sample_positions = []
+        self.sample_buffer = deque(maxlen=CODES_PER_SUBFRAME)
+        self.sample_positions = deque(maxlen=CODES_PER_SUBFRAME)
 
         self.sv = sv
 
         # State
-        self.preambles = []
-        self.checked = 0
+        self.preambles = deque()
         self.idx = 0
 
     def process_subframe(self, idx: int, inverted: bool) -> Subframe:
@@ -288,7 +289,7 @@ class FrameDecoder:
             Subframe: Subframe object containing decoded values
         """
 
-        sbf = self.sample_buffer[idx : idx + CODES_PER_SUBFRAME]
+        sbf = list(islice(self.sample_buffer, idx, idx + CODES_PER_SUBFRAME))
         sbf = np.array(sbf)
         sbf = sbf.reshape((-1, CODES_PER_BIT))
         sbf = np.sum(sbf, -1)
@@ -334,7 +335,7 @@ class FrameDecoder:
         """
 
         # Digitize samples
-        sample = 1 if sample > 0 else -1
+        sample = 1 if np.real(sample) > 0 else -1
 
         self.sample_buffer.append(sample)
         self.sample_positions.append(sample_pos)
@@ -345,23 +346,26 @@ class FrameDecoder:
             return None
 
         # Check for preambles
-        corr = np.sum(self.PREAMBLE * self.sample_buffer[-len(self.PREAMBLE) :])
+        tail = list(islice(self.sample_buffer, len(self.sample_buffer) - len(self.PREAMBLE), None))
+        corr = np.sum(self.PREAMBLE * tail)
         if np.abs(corr) == 160:
             self.preambles.append(self.idx - len(self.PREAMBLE))
 
         # Look through past preambles and process them if an entire subframe is available
         if (
             len(self.preambles) > 0
-            and self.preambles[0] < self.idx - CODES_PER_SUBFRAME
+            and self.preambles[0] <= self.idx - CODES_PER_SUBFRAME
         ):
-            i = self.preambles.pop(0)
+            # Candidate indices are absolute; deque indices follow the retained window.
+            absolute = self.preambles.popleft()
+            i = absolute - (self.idx - len(self.sample_buffer))
 
             corr = np.sum(
-                self.PREAMBLE * self.sample_buffer[i : i + len(self.PREAMBLE)]
+                self.PREAMBLE * list(islice(self.sample_buffer, i, i + len(self.PREAMBLE)))
             )
             inverted = int(corr) == -160
 
-            word = self.sample_buffer[i : i + BITS_PER_WORD * CODES_PER_BIT]
+            word = list(islice(self.sample_buffer, i, i + BITS_PER_WORD * CODES_PER_BIT))
             word = np.array(word)
             if inverted:
                 word = -1 * word
@@ -372,11 +376,10 @@ class FrameDecoder:
             word[word > 0] = 1
             word[word <= 0] = -1
 
-            # HOW will always have 0, 0 as D29*, D30*
+            # The preceding subframe's word 10 ends in D29=D30=0.
             valid = gps_parity(word, [-1, -1])
 
             if valid:
-                # TODO: clean up sample buffer after it's used
                 return self.process_subframe(i, inverted)
 
 
@@ -597,7 +600,13 @@ class TrackingChannel:
             x = code_err * (1 - self.early_late_spacing)
 
             # Send sample to decoder
-            frame = self.decoder.process(prompt, block_start + x) if prompt != 0 else None
+            if prompt != 0:
+                frame = self.decoder.process(prompt, block_start + x)
+            else:
+                # An erased code interval breaks navigation bit timing. Do not
+                # concatenate the remaining halves of a frame across the gap.
+                self.decoder.reset(self.sv)
+                frame = None
 
             # TODO: do something other than print frames
             if frame:
@@ -723,10 +732,11 @@ class GpsReceiver:
                 self.channels[i].update(samples)
 
     def dump_frames(self):
+        """Drain decoded frames in sample-position order across channels."""
         frames = []
 
         for chan in self.channels:
-            while len(chan.frames) > 0:
-                frames.append(chan.frames.pop())
+            frames.extend(chan.frames)
+            chan.frames.clear()
 
-        return frames
+        return sorted(frames, key=lambda frame: frame.position)
