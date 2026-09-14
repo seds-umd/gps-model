@@ -24,8 +24,9 @@ convergence; irregular stream chunks; tracking restart and blank-input recovery;
 the public receiver at decimation factors 1, 4, 8 and 16; navigation field boundary
 values; and capture-file validation. These use seeded synthetic signals, not
 live-RF sensitivity measurements or a position solution. Complete LNAV checks
-also stream acquisition through tracking into subframes 1, 2 and 3 in both
-signal polarities, without injecting decoded bits into the receiver.
+also stream acquisition through tracking into subframes 1, 2 and 3 with signed
+carrier offsets, shifted code phases and both signal polarities, without
+injecting decoded bits into the receiver.
 
 Coarse acquisition correlates a whole number of 1 ms C/A periods rather than
 rounding to a power of two. At 4.092 Msps, a 500 Hz search bin uses 8,184 samples;
@@ -61,7 +62,10 @@ establish a navigation fix. The decoder now returns a complete frame on its
 last 1 ms correlator sample and retains at most one six-second subframe
 (6,000 samples and positions). It rejects a corrupted frame and can find the
 following frame; `dump_frames()` drains frames in sample-position order across
-channels. Tests exercise all four previous-parity states and every single-bit
+channels. Frame positions convert the DLL residual and starting replica phase
+from chips into input samples; a converged half-sample signal shift is recovered
+at the decoder input. This is a relative timing check, not absolute range calibration.
+Tests exercise all four previous-parity states and every single-bit
 error in a word; fixed words were cross-checked with the pinned gps-sdr-sim C
 encoder. This qualifies the deterministic synthetic fixtures, not noisy RF bit
 synchronization, pages in subframes 4/5, ephemeris consistency, pseudoranges or

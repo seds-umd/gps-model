@@ -346,7 +346,7 @@ class FrameDecoder:
             return None
 
         # Check for preambles
-        tail = list(islice(self.sample_buffer, len(self.sample_buffer) - len(self.PREAMBLE), None))
+        tail = list(islice(reversed(self.sample_buffer), len(self.PREAMBLE)))[::-1]
         corr = np.sum(self.PREAMBLE * tail)
         if np.abs(corr) == 160:
             self.preambles.append(self.idx - len(self.PREAMBLE))
@@ -596,8 +596,9 @@ class TrackingChannel:
                 code_err = (np.abs(early) - np.abs(late)) / total
                 self.code_freq = CODE_FREQ - self.code_dll.update(code_err)
 
-            # Fine time
-            x = code_err * (1 - self.early_late_spacing)
+            # DLL residual and replica phase are in chips; decoder timing is
+            # in input samples. tcode[0] is the phase at this block's start.
+            x = (code_err * (1 - self.early_late_spacing) - tcode[0]) / code_phase_step
 
             # Send sample to decoder
             if prompt != 0:

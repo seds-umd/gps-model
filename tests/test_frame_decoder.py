@@ -68,12 +68,24 @@ class FrameDecoderTests(unittest.TestCase):
     def test_complete_frame_returned_on_last_sample_both_polarities(self):
         for polarity in [1, -1]:
             decoder = FrameDecoder();decoder.reset(7)
-            frames = feed(decoder, np.repeat(frame_bits() * 2 - 1, 20) * polarity)
+            symbols = np.repeat(frame_bits() * 2 - 1, 20) * polarity
+            self.assertEqual(feed(decoder, symbols[:-1]), [])
+            frames = feed(decoder, symbols[-1:], offset=len(symbols)-1)
             self.assertEqual(len(frames), 1)
             self.assertIsInstance(frames[0], Subframe3)
             self.assertEqual(frames[0].sv, 7)
             self.assertEqual(frames[0].tow, 12345 * 6 - 6)
             self.assertEqual(frames[0].position, 100.25)
+            self.assertEqual(frames[0].c_is, -2 * 2**-29)
+            self.assertEqual(frames[0].i_0, (0x81234567 - 2**32) * 2**-31)
+
+    def test_non_preamble_majority_votes_and_exact_preamble_limit(self):
+        symbols = np.repeat(frame_bits() * 2 - 1, 20)
+        noisy = symbols.copy().reshape(-1, 20)
+        noisy[8:, :9] *= -1
+        self.assertEqual(len(feed(FrameDecoder(), noisy.ravel())), 1)
+        symbols[0] *= -1
+        self.assertEqual(feed(FrameDecoder(), symbols), [])
 
     def test_corrupt_frame_rejected_then_next_frame_recovers(self):
         bits = frame_bits();bits[200] ^= 1
@@ -122,6 +134,22 @@ class FrameDecoderTests(unittest.TestCase):
         rx.channels[1].frames = [Subframe(words, 20, 2)]
         self.assertEqual([f.position for f in rx.dump_frames()], [10, 20, 30])
         self.assertEqual(rx.dump_frames(), [])
+
+    def test_fine_timestamps_preserve_half_sample_signal_offset(self):
+        fs = 4000000
+        positions = []
+        for phase in [0, .5]:
+            ch = TrackingChannel(fs, (25, .707, .25), (1, .707, 1))
+            ch.start(1, 0, 0)
+            measured = []
+            # Observe the actual decoder input while the real tracker converges.
+            ch.decoder.process = lambda sample, position: measured.append(position)
+            code = prn_gen.sample(1, fs, fs // 50, offset_samples=phase)
+            for _ in range(200):ch.update(code)
+            positions.append(np.array(measured))
+        count = min(map(len, positions))
+        difference = positions[1][:count] - positions[0][:count]
+        self.assertAlmostEqual(np.median(difference[-200:]), -.5, delta=.08)
 
     def test_public_receiver_acquires_tracks_and_decodes_three_subframes(self):
         fs = 4092000
