@@ -8,6 +8,26 @@ from gps.gps import acquisition, fine_acquisition, tracking
 
 
 class ReceiverChainTests(unittest.TestCase):
+    def test_numpy_satellite_identifier(self):
+        np.random.seed(20260914)
+        samples = gps_sim.generate_gps(4092000, 10000, 1)
+        candidates = acquisition(samples, 4092000, 2000, 1000, sv=np.int64(1))
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0][0], 1)
+
+    def test_code_epoch_phases_preserve_fine_correlation(self):
+        fs = 4092000
+        for phase in [0, 37, 1800, 2300, 3000, 4089, 4090, 4091]:
+            with self.subTest(phase=phase):
+                np.random.seed(20260914)
+                samples = gps_sim.generate_gps(fs, 50000, 1, sample_phase=phase)
+                candidates = acquisition(samples, fs, 2000, 1000, sv=1)
+                self.assertEqual(len(candidates), 1)
+                self.assertEqual(candidates[0][2], phase)
+                freq, metric = fine_acquisition(samples, fs, 4096, 8, 1, candidates[0][2])
+                self.assertEqual(freq, 0)
+                self.assertGreater(metric, 2048)
+
     def test_acquisition_feeds_a_stable_tracking_channel(self):
         fs = 4092000
         for frequency, phase in [(0, 0), (fs / 4096, 37), (-fs / 4096, 4090)]:

@@ -74,12 +74,18 @@ def acquisition(
         Frequency shift is in Hz. Code phase is in samples.
     """
 
-    # Number of samples for FFT to achieve bin size
-    fft_n = int(2 ** np.ceil(np.log2(f_s / bin_size)))
+    if not np.isfinite(f_s) or f_s <= 0 or not np.isfinite(bin_size) or bin_size <= 0:
+        raise ValueError("Sample rate and bin size must be finite and positive")
+    # Correlate whole 1 ms C/A periods. A power-of-two window at 4.092 Msps
+    # splices the code at the circular boundary and can move the winning peak.
+    periods = max(1, int(np.ceil(1000 / bin_size)))
+    fft_n = int(round(f_s * periods / 1000))
+    if fft_n < 1:
+        raise ValueError("Sample rate is too low for a C/A code period")
     bin_size_actual = f_s / fft_n
 
     if len(x) < fft_n:
-        pass  # TODO: pad with zeros to fill up to FFT size
+        raise ValueError(f"Need at least {fft_n} samples for acquisition; got {len(x)}")
 
     if verbose:
         print(f"[Acquisition] Searching {1e3*fft_n/f_s:0.2f}ms period, N={fft_n}")
@@ -97,7 +103,7 @@ def acquisition(
 
     if sv == None:
         sv_range = range(1, 33)
-    elif type(sv) == int:
+    elif isinstance(sv, (int, np.integer)):
         sv_range = [sv]
     else:
         sv_range = sv

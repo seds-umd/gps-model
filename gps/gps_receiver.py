@@ -81,16 +81,13 @@ def decode(sbf, word, start, end, twos_comp=False, flip=False):
         int: Decoded value.
     """
 
-    if start == end:
-        return int(sbf[word - 1][start - 1])
-
     if flip:
         data = int(sbf[word - 1][start - 1 : end][::-1], 2)
     else:
         data = int(sbf[word - 1][start - 1 : end], 2)
     data_len = end - start + 1
 
-    if twos_comp and data > 2 ** (data_len - 1):
+    if twos_comp and data >= 2 ** (data_len - 1):
         data = data - 2**data_len
 
     return data
@@ -148,7 +145,7 @@ class Subframe1(Subframe):
         self.week = decode(self.frame_data, 3, 1, 10)  # 20.3.3.3.1.1
         self.l2_code = decode(self.frame_data, 3, 11, 12)  # 20.3.3.3.1.2
         self.ura = decode(self.frame_data, 3, 13, 16)  # 20.3.3.3.1.3
-        self.sv_health = decode(self.frame_data, 3, 16, 16)  # 20.3.3.3.1.4
+        self.sv_health = decode(self.frame_data, 3, 17, 22)  # 20.3.3.3.1.4
 
         # 20.3.3.3.1.5
         self.iodc = decode(self.frame_data, 3, 23, 24) << 8
@@ -179,7 +176,7 @@ class Subframe2(Subframe):
 
         self.m_0 = decode(self.frame_data, 4, 17, 24) << 24
         self.m_0 = self.m_0 | decode(self.frame_data, 5, 1, 24)
-        if self.m_0 > 2**31:
+        if self.m_0 >= 2**31:
             self.m_0 = self.m_0 - 2**32
         self.m_0 = self.m_0 * 2**-31
 
@@ -201,7 +198,7 @@ class Subframe2(Subframe):
         # assert self.t_oe < 604784, f"{self.t_oe} is not valid"
 
         self.fit_interval = decode(self.frame_data, 10, 17, 17)
-        self.aodo = decode(self.frame_data, 10, 17, 22)
+        self.aodo = decode(self.frame_data, 10, 18, 22) * 900  # seconds; 20.3.3.4.2
 
     def __repr__(self) -> str:
         s = (
@@ -221,15 +218,15 @@ class Subframe3(Subframe):
 
         self.Omega_0 = decode(self.frame_data, 3, 17, 24) << 24
         self.Omega_0 = self.Omega_0 | decode(self.frame_data, 4, 1, 24)
-        if self.Omega_0 > 2**31:
+        if self.Omega_0 >= 2**31:
             self.Omega_0 = self.Omega_0 - 2**32
         self.Omega_0 = self.Omega_0 * 2**-31
 
         self.c_is = decode(self.frame_data, 5, 1, 24, True) * 2**-29
 
-        self.i_0 = decode(self.frame_data, 5, 17, 24, True) << 24
+        self.i_0 = decode(self.frame_data, 5, 17, 24) << 24
         self.i_0 = self.i_0 | decode(self.frame_data, 6, 1, 24)
-        if self.i_0 > 2**31:
+        if self.i_0 >= 2**31:
             self.i_0 = self.i_0 - 2**32
         self.i_0 = self.i_0 * 2**-31
 
@@ -237,7 +234,7 @@ class Subframe3(Subframe):
 
         self.omega = decode(self.frame_data, 7, 17, 24) << 24
         self.omega = self.omega | decode(self.frame_data, 8, 1, 24)
-        if self.omega > 2**31:
+        if self.omega >= 2**31:
             self.omega = self.omega - 2**32
         self.omega = self.omega * 2**-31
 
@@ -472,6 +469,13 @@ class TrackingChannel:
             debug (bool): Store extra debugging data.
         """
 
+        if not np.isfinite(code_est) or not 0 <= code_est < self.fs / 1000:
+            raise ValueError("code_est must lie within one C/A code period")
+        self.buffer = SampleBuffer()
+        self.frames = []
+        self.carrier_pll.reset()
+        self.code_dll.reset()
+
         self.sv = sv
         self.freq_est = freq_est
         self.code_est = code_est
@@ -571,19 +575,29 @@ class TrackingChannel:
             late = np.sum(baseband * late_code)
 
             # Update carrier PLL
-            carrier_err = np.arctan(prompt.imag / prompt.real) / (2 * np.pi)
-            self.carrier_freq = self.freq_est + self.carrier_pll.update(carrier_err)
+            carrier_err = 0.0
+            if prompt != 0:
+                # Costas discriminator: fold the phase modulo pi for BPSK.
+                angle = np.angle(prompt)
+                if angle > np.pi / 2:
+                    angle -= np.pi
+                elif angle < -np.pi / 2:
+                    angle += np.pi
+                carrier_err = angle / (2 * np.pi)
+                self.carrier_freq = self.freq_est + self.carrier_pll.update(carrier_err)
 
             # Update code DLL
-            code_err = (np.abs(early) - np.abs(late)) / (np.abs(early) + np.abs(late))
-            self.code_freq = CODE_FREQ - self.code_dll.update(code_err)
+            total = np.abs(early) + np.abs(late)
+            code_err = 0.0
+            if total > 0:
+                code_err = (np.abs(early) - np.abs(late)) / total
+                self.code_freq = CODE_FREQ - self.code_dll.update(code_err)
 
             # Fine time
-            r = np.abs(late) / np.abs(early)
-            x = (1 - r) * (1 - self.early_late_spacing) / (1 + r)
+            x = code_err * (1 - self.early_late_spacing)
 
             # Send sample to decoder
-            frame = self.decoder.process(prompt, block_start + x)
+            frame = self.decoder.process(prompt, block_start + x) if prompt != 0 else None
 
             # TODO: do something other than print frames
             if frame:
@@ -666,7 +680,8 @@ class GpsReceiver:
 
             self.buffer.push(samples)
 
-            acq_count = int(4096 * self.dec_factor)
+            # Coarse search uses 500 Hz bins (2 ms); fine needs 4096 outputs.
+            acq_count = max(int(4096 * self.dec_factor), int(round(self.fs * .002)))
 
             if self.buffer.count < acq_count:
                 return
@@ -689,7 +704,7 @@ class GpsReceiver:
                     samples,
                     self.fs,
                     4096,
-                    8,
+                    self.dec_factor,
                     results[i][0],
                     results[i][2],
                     verbose=True,
