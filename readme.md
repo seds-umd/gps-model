@@ -10,6 +10,28 @@ Planned:
 * Calculating position fix
 * Real time processing from SDR
 
+## Reproducible reference checks
+
+From the repository root, after installing the requirements:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+The checks cover five exact signed fine-acquisition FFT frequencies and three
+two-second synthetic single-satellite acquisition-to-tracking runs, including
+positive/negative Doppler and a code-phase wrap. The tracker must produce finite
+outputs, converge in carrier frequency and code discriminator error, and recover
+a strong coherent prompt signal. These are seeded, noiseless reference checks,
+not live-RF sensitivity tests or a position solution.
+
+Fine-acquisition frequency bins are spaced at `f_s / (fft_n * dec_factor)`;
+DC is exactly zero. Use `fftfreq` for these bins, not a linspace including both
+Nyquist endpoints. For FPGA acquisition results, frequency is a signed 12-bit bin
+index and code phase is referenced to the front end's 4092-sample timestamp epoch.
+Align a captured sample block to that epoch before using the result to seed this
+Python tracker; passing the raw integer phase for an unrelated block is invalid.
+
 ## Setup
 
 Clone recursively:

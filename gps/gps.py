@@ -171,7 +171,9 @@ def fine_acquisition(
         x_dec.reshape(-1, dec_factor), axis=1
     )  # Acting as a mean but absolute value doesn't matter
 
-    f = np.linspace(f_s / -2, f_s / 2, fft_n) / dec_factor
+    # Match the FFT's discrete bins; linspace includes both endpoints and
+    # incorrectly labels DC as a positive half-bin frequency.
+    f = np.fft.fftshift(np.fft.fftfreq(fft_n, d=dec_factor / f_s))
 
     X = np.abs(np.fft.fftshift(np.fft.fft(x_dec)))
 
