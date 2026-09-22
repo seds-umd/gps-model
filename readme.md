@@ -10,6 +10,56 @@ Planned:
 * Calculating position fix
 * Real time processing from SDR
 
+## Tests
+
+From the repository root, after installing the requirements:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+The tests use seeded synthetic signals, so they need no capture file and no
+hardware. They cover fine-acquisition frequency bins, coarse code phase across
+the whole C/A epoch, acquisition-to-tracking convergence, streaming in
+irregular chunks, tracking restart, the public receiver at decimation factors
+1, 4, 8 and 16, LNAV field decoding, complete-frame decoding through subframes 1 to 3,
+and the capture-file CLI. They are noiseless reference checks, not a
+sensitivity measurement, and there is still no position solution.
+
+A few behaviours worth knowing when you use the model:
+
+* Coarse acquisition correlates a whole number of 1 ms C/A periods (8,184
+  samples for a 500 Hz bin at 4.092 Msps) instead of rounding up to a power of
+  two, which spliced the code at the window edge and could shift the peak near
+  the epoch boundary. This assumes the sample rate is a multiple of 1 kHz;
+  resample other rates first.
+* Fine-acquisition bins come from `fftfreq`, so DC is exactly zero and spacing
+  is `f_s / (fft_n * dec_factor)`.
+* `TrackingChannel.start` resets all loop and decoder state and requires a code
+  phase within one C/A period, measured from the same sample epoch acquisition
+  used. Chunk boundaries do not disturb tracking. A zero-energy block leaves
+  the loop estimates alone and resets the frame decoder, so a frame is never
+  spliced across a gap; there is no lock-loss detector or reacquisition yet.
+* FPGA acquisition results give frequency as a signed 12-bit bin index and code
+  phase relative to the front end's 4092-sample timestamp epoch. Align a
+  capture to that epoch before seeding the Python tracker.
+* Navigation decoding is still partial: no subframe 4/5 pages, no ephemeris
+  consistency checks, no pseudoranges. The preamble detector expects exactly
+  20 correlator samples per bit, so real bit-edge jitter is not handled yet.
+  Field references are IS-GPS-200N sections 20.3.3.3.1.4 and 20.3.3.4.1-2 and
+  Table 20-III.
+
+## Capture-file input
+
+```bash
+python main.py capture.iq --fs 4092000 --width 8
+```
+
+The capture must be alternating signed I, Q integers; `--width` is 8, 16 or 32
+bits per integer, little-endian. The file is memory-mapped and processed in
+one-second chunks, so long captures do not need a second copy in RAM. Missing,
+empty or odd-length files and bad sample rates fail with a clear error.
+
 ## Setup
 
 Clone recursively:
@@ -21,7 +71,7 @@ git clone --recursive git@github.com:seds-umd/gps-model.git
 Create a virtual environment and install required packages:
 
 ```bash
-python3 -m venv venv
+python3.12 -m venv venv   # 3.11 or 3.12: the pinned numpy 1.x has no wheels for newer Pythons
 source venv/bin/activate
 pip install -r requirements.txt
 ```
