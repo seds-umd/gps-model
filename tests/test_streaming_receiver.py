@@ -1,4 +1,5 @@
 """Streaming tracking must preserve state across chunks and reset on restart."""
+
 import unittest
 
 import numpy as np
@@ -15,23 +16,27 @@ class StreamingReceiverTests(unittest.TestCase):
 
     def signal(self, sv, phase, frequency, seconds=0.15):
         np.random.seed(20260914)
-        return gps_sim.generate_gps(self.fs, int(self.fs * seconds), sv,
-                                    doppler=frequency, sample_phase=phase)
+        return gps_sim.generate_gps(
+            self.fs, int(self.fs * seconds), sv, doppler=frequency, sample_phase=phase
+        )
 
     def assert_same_trace(self, a, b):
-        for key in ['iq', 'carr_freq', 'carr_err', 'code_freq', 'code_err', 'code_pos']:
-            np.testing.assert_allclose(getattr(a.debug, key), getattr(b.debug, key), atol=1e-9, rtol=0)
+        for key in ["iq", "carr_freq", "carr_err", "code_freq", "code_err", "code_pos"]:
+            np.testing.assert_allclose(
+                getattr(a.debug, key), getattr(b.debug, key), atol=1e-9, rtol=0
+            )
 
     def test_irregular_chunks_match_one_block(self):
         samples = self.signal(1, 37, self.fs / 4096)
         whole, chunked = self.make_channel(), self.make_channel()
-        for ch in [whole, chunked]:ch.start(1, self.fs / 4096, 37, debug=True)
+        for ch in [whole, chunked]:
+            ch.start(1, self.fs / 4096, 37, debug=True)
         whole.update(samples)
         sizes = [1, 7, 4091, 16003, 25000]
         offset, i = 0, 0
         while offset < len(samples):
             n = sizes[i % len(sizes)]
-            chunked.update(samples[offset:offset+n])
+            chunked.update(samples[offset : offset + n])
             offset += n
             i += 1
         self.assertGreater(len(whole.debug.iq), 140)
@@ -48,18 +53,22 @@ class StreamingReceiverTests(unittest.TestCase):
             ch.update(new)
         self.assert_same_trace(fresh, reused)
 
+
 class PublicReceiverTests(unittest.TestCase):
     def test_public_receiver_honors_decimation_and_small_chunks(self):
         import contextlib
         import io
         from gps.gps_receiver import GpsReceiver
+
         fs = 4092000
         np.random.seed(20260914)
-        samples = gps_sim.generate_gps(fs, int(fs * .1), 1, sample_phase=4090)
+        samples = gps_sim.generate_gps(fs, int(fs * 0.1), 1, sample_phase=4090)
         for decimation in [1, 4, 8, 16]:
-            with self.subTest(decimation=decimation), contextlib.redirect_stdout(io.StringIO()):
+            with self.subTest(decimation=decimation), contextlib.redirect_stdout(
+                io.StringIO()
+            ):
                 rx = GpsReceiver(fs, channels=1, dec_factor=decimation, debug=True)
-                with np.errstate(divide='raise', invalid='raise'):
+                with np.errstate(divide="raise", invalid="raise"):
                     for chunk in np.array_split(samples, 200):
                         rx.process(chunk)
                 self.assertEqual(rx.acquired.tolist(), [1])
@@ -69,7 +78,7 @@ class PublicReceiverTests(unittest.TestCase):
     def test_zero_signal_does_not_poison_tracking_state(self):
         channel = StreamingReceiverTests().make_channel()
         channel.start(1, 0, 0, debug=True)
-        with np.errstate(divide='raise', invalid='raise'):
+        with np.errstate(divide="raise", invalid="raise"):
             channel.update(np.zeros(4092 * 20, dtype=np.complex64))
             np.random.seed(20260914)
             samples = gps_sim.generate_gps(4092000, 4092 * 2000, 1)
@@ -80,9 +89,11 @@ class PublicReceiverTests(unittest.TestCase):
 
     def test_invalid_epoch_is_rejected(self):
         for phase in [-1, 4092, np.nan, np.inf]:
-            with self.subTest(phase=phase), self.assertRaisesRegex(ValueError, 'code period'):
+            with self.subTest(phase=phase), self.assertRaisesRegex(
+                ValueError, "code period"
+            ):
                 StreamingReceiverTests().make_channel().start(1, 0, phase)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
