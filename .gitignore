@@ -7,3 +7,6 @@ data/
 *.egg-info
 
 build
+
+# Windows FFT model copied from a local Vivado install
+gps/cmodel/fft/*.dll
