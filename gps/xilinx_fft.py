@@ -14,7 +14,8 @@ def _load_cmodel():
     Copy the four DLLs from that archive into cmodel/fft, or unpack it anywhere
     and set XFFT_CMODEL_DIR to the folder.
     """
-    directory = Path(os.environ.get("XFFT_CMODEL_DIR") or Path(__file__).parent / "cmodel" / "fft")
+    # Absolute: os.add_dll_directory refuses a relative path.
+    directory = Path(os.environ.get("XFFT_CMODEL_DIR") or Path(__file__).parent / "cmodel" / "fft").resolve()
 
     if sys.platform == "win32":
         library = directory / "libIp_xfft_v9_1_bitacc_cmodel.dll"
