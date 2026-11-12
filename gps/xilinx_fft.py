@@ -1,10 +1,44 @@
 import ctypes
+import os
+import sys
 import numpy as np
 from pathlib import Path
 
-_lib_path = Path(__file__).parent
-_gmp = ctypes.CDLL(_lib_path / "cmodel/fft/libgmp.so.11")
-_fft_cmodel = ctypes.CDLL(_lib_path / "cmodel/fft/libIp_xfft_v9_1_bitacc_cmodel.so")
+
+def _load_cmodel():
+    """Load Xilinx's bit-accurate FFT model for this platform.
+
+    The Linux x86_64 library is packaged in cmodel/fft. The Windows build is
+    not: it ships with Vivado as
+    <Vivado>/data/ip/xilinx/xfft_v9_1/cmodel/xfft_v9_1_bitacc_cmodel_nt64.zip.
+    Copy the four DLLs from that archive into cmodel/fft, or unpack it anywhere
+    and set XFFT_CMODEL_DIR to the folder.
+    """
+    # Absolute: os.add_dll_directory refuses a relative path.
+    directory = Path(os.environ.get("XFFT_CMODEL_DIR") or Path(__file__).parent / "cmodel" / "fft").resolve()
+
+    if sys.platform == "win32":
+        library = directory / "libIp_xfft_v9_1_bitacc_cmodel.dll"
+        if not library.exists():
+            raise OSError(
+                f"{library} not found. The Windows FFT model ships with Vivado in "
+                "data/ip/xilinx/xfft_v9_1/cmodel/xfft_v9_1_bitacc_cmodel_nt64.zip: copy its DLLs into "
+                f"{directory} or set XFFT_CMODEL_DIR."
+            )
+        # The model depends on libgmp, libmpfr and the floating-point model beside it.
+        os.add_dll_directory(str(directory))
+        return ctypes.CDLL(str(library))
+
+    if sys.platform != "linux":
+        raise OSError(f"Xilinx provides the FFT bit-accurate model for Linux and Windows only, not {sys.platform}")
+    # Keep a reference to libgmp: the model resolves its symbols from it.
+    global _gmp
+    _gmp = ctypes.CDLL(str(directory / "libgmp.so.11"))
+    return ctypes.CDLL(str(directory / "libIp_xfft_v9_1_bitacc_cmodel.so"))
+
+
+_gmp = None
+_fft_cmodel = _load_cmodel()
 
 class FftGenerics(ctypes.Structure):
     C_NFFT_MAX: ctypes.c_int
@@ -16,7 +50,12 @@ class FftGenerics(ctypes.Structure):
     C_HAS_SCALING: ctypes.c_int
     C_HAS_BFP: ctypes.c_int
     C_HAS_ROUNDING: ctypes.c_int
+    C_NSSR: ctypes.c_int
+    C_SYSTOLICFFT_INV: ctypes.c_int
 
+    # Newer releases of the model (the one in Vivado 2025.2, for example) append
+    # C_NSSR and C_SYSTOLICFFT_INV. The structure is passed and returned by
+    # value in memory, so an older library simply never looks at the extra words.
     _fields_ = [
         ("C_NFFT_MAX", ctypes.c_int),
         ("C_ARCH", ctypes.c_int),
@@ -27,6 +66,8 @@ class FftGenerics(ctypes.Structure):
         ("C_HAS_SCALING", ctypes.c_int),
         ("C_HAS_BFP", ctypes.c_int),
         ("C_HAS_ROUNDING", ctypes.c_int),
+        ("C_NSSR", ctypes.c_int),
+        ("C_SYSTOLICFFT_INV", ctypes.c_int),
     ]
 
 class FftState(ctypes.Structure):
@@ -104,6 +145,9 @@ class Fft:
         self.generics.C_HAS_SCALING = 1
         self.generics.C_HAS_BFP = 1
         self.generics.C_HAS_ROUNDING = 1
+        # One sample per clock (no super-sample-rate), forward/inverse chosen per run.
+        self.generics.C_NSSR = 1
+        self.generics.C_SYSTOLICFFT_INV = 0
 
         self.state = _fft_cmodel.xilinx_ip_xfft_v9_1_create_state(self.generics)
 
